@@ -1,6 +1,6 @@
 {
   "name": "satisfactory-blueprint-organizer",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "main": "out/main/electron.js",
@@ -46,6 +46,7 @@
     ],
     "win": {
       "target": "nsis",
+      "icon": "build/icon.ico",
       "signAndEditExecutable": false
     }
   }

@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type { DraftApplyOptions, DraftApplyPlan, DraftTree } from '../shared/draftModel';
-import type { AutoLocateResult, BackupRecord, BlueprintDirResolution, DryRunResult, ExecuteOptions, ImportReport, PlayerStateRepairReport, RollbackReport, SaveCandidate, SaveDiscoveryResult } from '../shared/types';
+import type { AutoLocateResult, BackupRecord, BlueprintDirResolution, DryRunResult, ExecuteOptions, ImportReport, PlayerStateRepairReport, RollbackReport, SaveCandidate, SaveDiscoveryResult, SaveGameLocation } from '../shared/types';
 
 const api = {
   chooseGameBlueprintDirectory: (): Promise<string | null> => ipcRenderer.invoke('dialog:directory', 'gameBlueprintDir'),
@@ -11,7 +11,9 @@ const api = {
     ipcRenderer.invoke('workflow:dryRun', gameBlueprintDir, mappingDir, selectedSavePath, selectedAccountDir, recursiveSaveScan),
   executeImport: (options: ExecuteOptions): Promise<ImportReport> => ipcRenderer.invoke('workflow:execute', options),
   repairPlayerStates: (savePath: string, blueprintDir: string): Promise<PlayerStateRepairReport> => ipcRenderer.invoke('workflow:repairPlayerStates', savePath, blueprintDir),
+  setMenuLanguage: (language: 'zh-CN' | 'en-US'): Promise<void> => ipcRenderer.invoke('menu:setLanguage', language),
   autoLocateSaveGames: (): Promise<AutoLocateResult> => ipcRenderer.invoke('saves:autoLocate'),
+  listSaveGameLocations: (): Promise<SaveGameLocation[]> => ipcRenderer.invoke('saves:locations'),
   listAccountsInRoot: (saveGamesRoot: string): Promise<string[]> => ipcRenderer.invoke('saves:accountsInRoot', saveGamesRoot),
   listSavesInAccount: (accountDir: string): Promise<SaveCandidate[]> => ipcRenderer.invoke('saves:listInAccount', accountDir),
   resolveBlueprintDir: (saveGamesRoot: string, savePath: string): Promise<BlueprintDirResolution> => ipcRenderer.invoke('saves:resolveBlueprintDir', saveGamesRoot, savePath),

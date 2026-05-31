@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { SAVE_EXT } from '../shared/constants';
-import type { AutoLocateResult, BlueprintDirResolution, Notice, SaveCandidate, SaveDiscoveryResult } from '../shared/types';
+import type { AutoLocateResult, BlueprintDirResolution, Notice, SaveCandidate, SaveDiscoveryResult, SaveGameLocation } from '../shared/types';
 import { pathExists } from './fsUtils';
 import { parseSaveHeaderMetadata } from './parseSave';
 
@@ -22,6 +22,41 @@ export function getDefaultSaveGamesRoot(): string | null {
   const localAppData = process.env.LOCALAPPDATA;
   if (!localAppData) return null;
   return path.join(localAppData, 'FactoryGame', 'Saved', 'SaveGames');
+}
+
+/**
+ * Enumerate every Windows user under C:\Users that has a Satisfactory SaveGames folder,
+ * derived from %LOCALAPPDATA% (so no path is hard-coded). The current user is listed first.
+ */
+export async function listSaveGameLocations(): Promise<SaveGameLocation[]> {
+  const localAppData = process.env.LOCALAPPDATA;
+  if (!localAppData) return [];
+  const userHome = path.dirname(path.dirname(localAppData)); // e.g. C:\Users\27232
+  const usersRoot = path.dirname(userHome); // e.g. C:\Users
+  const relFromHome = path.relative(userHome, localAppData); // e.g. AppData\Local
+  const currentUser = path.basename(userHome);
+
+  const locations: SaveGameLocation[] = [];
+  let userEntries: import('node:fs').Dirent[];
+  try {
+    userEntries = await fs.readdir(usersRoot, { withFileTypes: true });
+  } catch {
+    const root = path.join(localAppData, 'FactoryGame', 'Saved', 'SaveGames');
+    if (await pathExists(root)) locations.push({ userName: currentUser, saveGamesRoot: root });
+    return locations;
+  }
+
+  for (const entry of userEntries) {
+    if (!entry.isDirectory()) continue;
+    const root = path.join(usersRoot, entry.name, relFromHome, 'FactoryGame', 'Saved', 'SaveGames');
+    if (await pathExists(root)) locations.push({ userName: entry.name, saveGamesRoot: root });
+  }
+  locations.sort((a, b) => {
+    if (a.userName === currentUser) return -1;
+    if (b.userName === currentUser) return 1;
+    return a.userName.localeCompare(b.userName);
+  });
+  return locations;
 }
 
 /** List account folders directly under a SaveGames root (excluding `blueprints`). */

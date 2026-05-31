@@ -64,6 +64,13 @@ export interface SaveDiscoveryResult {
   errors: Notice[];
 }
 
+/** A Windows user that has a Satisfactory SaveGames folder. */
+export interface SaveGameLocation {
+  /** Windows user folder name (e.g. the account under C:\Users). */
+  userName: string;
+  saveGamesRoot: string;
+}
+
 /** Result of auto-locating the fixed Satisfactory SaveGames root and its account folders. */
 export interface AutoLocateResult {
   saveGamesRoot: string | null;

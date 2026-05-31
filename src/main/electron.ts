@@ -1,6 +1,7 @@
 import { app, BrowserWindow } from 'electron';
 import path from 'node:path';
 import { registerIpc } from './ipc';
+import { buildAppMenu, localeToMenuLanguage } from './menu';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -27,6 +28,7 @@ function createWindow(): void {
 
 app.whenReady().then(() => {
   registerIpc();
+  buildAppMenu(localeToMenuLanguage(app.getLocale()));
   createWindow();
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

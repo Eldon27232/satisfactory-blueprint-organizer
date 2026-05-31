@@ -132,7 +132,12 @@ const translations = {
     selectAll: '全选',
     manualFallback: '手动指定（可选）：',
     chooseSaveGamesRoot: '选择 SaveGames 根目录',
-    chooseBlueprintDir: '手动选择蓝图目录'
+    chooseBlueprintDir: '手动选择蓝图目录',
+    userName: '用户名',
+    gameName: '游戏名',
+    needSaveTitle: '尚未选择存档',
+    needSaveMessage: '请先在上方选择用户名、游戏账户和存档（或用下方“手动选择”按钮指定 .sav 和蓝图目录），然后再进入蓝图管理。',
+    gotIt: '知道了'
   },
   'en-US': {
     appTitle: 'Satisfactory Blueprint Classifier',
@@ -259,7 +264,12 @@ const translations = {
     selectAll: 'Select all',
     manualFallback: 'Manual override (optional):',
     chooseSaveGamesRoot: 'Choose SaveGames root',
-    chooseBlueprintDir: 'Choose blueprint folder'
+    chooseBlueprintDir: 'Choose blueprint folder',
+    userName: 'User',
+    gameName: 'Game',
+    needSaveTitle: 'No save selected',
+    needSaveMessage: 'Pick a user, game account and save above (or use the manual buttons below to choose a .sav and blueprint folder) before opening the blueprint manager.',
+    gotIt: 'Got it'
   }
 } as const;
 

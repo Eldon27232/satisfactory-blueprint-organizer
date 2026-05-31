@@ -1,7 +1,7 @@
 import { AlertTriangle, ArchiveRestore, CheckCircle2, FolderOpen, RotateCcw, ShieldAlert } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type { DraftTree } from '../shared/draftModel';
-import type { BackupRecord, ImportReport, Notice, SaveCandidate } from '../shared/types';
+import type { BackupRecord, ImportReport, Notice, SaveCandidate, SaveGameLocation } from '../shared/types';
 import { detectLanguage, saveLanguage, translate, type Language } from './i18n';
 import { ManagerView } from './ManagerView';
 
@@ -11,9 +11,10 @@ export function App(): JSX.Element {
   const [language, setLanguage] = useState<Language>(() => detectLanguage());
   const [view, setView] = useState<View>('setup');
 
-  // Auto-located, fixed SaveGames root flow.
+  // Auto-located save flow: Windows user -> game account -> save.
+  const [userLocations, setUserLocations] = useState<SaveGameLocation[]>([]);
+  const [selectedUserName, setSelectedUserName] = useState<string | null>(null);
   const [saveGamesRoot, setSaveGamesRoot] = useState<string | null>(null);
-  const [rootExists, setRootExists] = useState(true);
   const [accountDirs, setAccountDirs] = useState<string[]>([]);
   const [selectedAccountDir, setSelectedAccountDir] = useState<string | null>(null);
   const [saves, setSaves] = useState<SaveCandidate[]>([]);
@@ -30,10 +31,12 @@ export function App(): JSX.Element {
   const [importReport, setImportReport] = useState<ImportReport | null>(null);
   const [backups, setBackups] = useState<BackupRecord[]>([]);
   const [selectedBackupPath, setSelectedBackupPath] = useState<string>('');
+  const [setupWarning, setSetupWarning] = useState(false);
 
   const t = (key: Parameters<typeof translate>[1]): string => translate(language, key);
 
   useEffect(() => {
+    void window.sbc?.setMenuLanguage(language);
     void autoLocate();
     void refreshBackups();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -75,6 +78,7 @@ export function App(): JSX.Element {
   function changeLanguage(next: Language): void {
     setLanguage(next);
     saveLanguage(next);
+    void window.sbc?.setMenuLanguage(next);
   }
 
   async function runBusy(action: () => Promise<void>, successMessage?: string): Promise<void> {
@@ -99,28 +103,44 @@ export function App(): JSX.Element {
     const sbc = api();
     if (!sbc) return;
     await runBusy(async () => {
-      const result = await sbc.autoLocateSaveGames();
-      setSaveGamesRoot(result.saveGamesRoot);
-      setRootExists(result.rootExists);
-      setAccountDirs(result.accountDirs);
+      const locations = await sbc.listSaveGameLocations();
+      setUserLocations(locations);
+      setSelectedUserName(null);
+      setSaveGamesRoot(null);
+      setAccountDirs([]);
       setSelectedAccountDir(null);
       setSaves([]);
       setSelectedSavePath(null);
       setGameBlueprintDir('');
       setSessionName(null);
       setLocateNotices([]);
-      if (!result.rootExists) {
-        setLocateNotices([{ severity: 'error', code: 'SAVEGAMES_ROOT_NOT_FOUND', message: t('rootNotFound'), path: result.saveGamesRoot ?? '' }]);
+      if (locations.length === 0) {
+        setLocateNotices([{ severity: 'error', code: 'SAVEGAMES_ROOT_NOT_FOUND', message: t('rootNotFound') }]);
         return;
       }
-      if (result.accountDirs.length === 0) {
-        setLocateNotices([{ severity: 'error', code: 'NO_ACCOUNT_DIR', message: t('noAccountFound'), path: result.saveGamesRoot ?? '' }]);
-        return;
-      }
-      const firstAccount = result.accountDirs[0];
-      setSelectedAccountDir(firstAccount);
-      await loadSaves(firstAccount, result.saveGamesRoot);
+      await selectUser(locations[0]);
     });
+  }
+
+  async function selectUser(location: SaveGameLocation): Promise<void> {
+    const sbc = window.sbc;
+    if (!sbc) return;
+    setSelectedUserName(location.userName);
+    setSaveGamesRoot(location.saveGamesRoot);
+    setSelectedAccountDir(null);
+    setSaves([]);
+    setSelectedSavePath(null);
+    setGameBlueprintDir('');
+    setSessionName(null);
+    const accounts = await sbc.listAccountsInRoot(location.saveGamesRoot);
+    setAccountDirs(accounts);
+    if (accounts.length === 0) {
+      setLocateNotices([{ severity: 'warning', code: 'NO_ACCOUNT_DIR', message: t('noAccountFound'), path: location.saveGamesRoot }]);
+      return;
+    }
+    setLocateNotices([]);
+    setSelectedAccountDir(accounts[0]);
+    await loadSaves(accounts[0], location.saveGamesRoot);
   }
 
   async function loadSaves(accountDir: string, root: string | null): Promise<void> {
@@ -161,30 +181,15 @@ export function App(): JSX.Element {
     });
   }
 
-  // --- Manual fallbacks (kept small): override the auto-located paths. ---
-  async function chooseSaveGamesRoot(): Promise<void> {
-    const sbc = api();
-    if (!sbc) return;
-    const dir = await sbc.chooseDirectory();
-    if (!dir) return;
-    await runBusy(async () => {
-      const accounts = await sbc.listAccountsInRoot(dir);
-      setSaveGamesRoot(dir);
-      setRootExists(true);
-      setAccountDirs(accounts);
-      setSelectedAccountDir(null);
-      setSaves([]);
-      setSelectedSavePath(null);
-      setGameBlueprintDir('');
-      setSessionName(null);
-      setLocateNotices(accounts.length === 0 ? [{ severity: 'warning', code: 'NO_ACCOUNT_DIR', message: t('noAccountFound'), path: dir }] : []);
-      if (accounts.length > 0) {
-        setSelectedAccountDir(accounts[0]);
-        await loadSaves(accounts[0], dir);
-      }
+  function onUserChange(userName: string): void {
+    const location = userLocations.find((item) => item.userName === userName);
+    if (!location) return;
+    void runBusy(async () => {
+      await selectUser(location);
     });
   }
 
+  // --- Manual fallbacks (kept small): override the auto-located paths. ---
   async function chooseSaveFileManually(): Promise<void> {
     const sbc = api();
     if (!sbc) return;
@@ -211,7 +216,11 @@ export function App(): JSX.Element {
 
   async function enterManager(): Promise<void> {
     const sbc = api();
-    if (!sbc || !gameBlueprintDir || !selectedSavePath) return;
+    if (!sbc) return;
+    if (!gameBlueprintDir || !selectedSavePath) {
+      setSetupWarning(true);
+      return;
+    }
     await runBusy(async () => {
       const tree = await sbc.buildDraftFromSave(gameBlueprintDir, selectedSavePath);
       const blocking = tree.buildNotices.filter((notice) => notice.severity === 'error');
@@ -304,14 +313,11 @@ export function App(): JSX.Element {
     );
   }
 
-  const canEnter = Boolean(gameBlueprintDir && selectedSavePath) && !busy;
-
   return (
     <main className="app-shell">
       <header className="top-bar">
         <div>
           <h1>{t('appTitle')}</h1>
-          <p>{t('appSubtitle')}</p>
         </div>
         <div className="top-actions">
           <label className="language-picker">
@@ -329,15 +335,25 @@ export function App(): JSX.Element {
 
       <section className="panel paths-panel">
         <h2>{t('selectSaveTitle')}</h2>
-        <p className="muted">{t('selectSaveDesc')}</p>
-
-        <div className="info-row">
-          <span>{t('saveGamesRoot')}</span>
-          <strong title={saveGamesRoot ?? ''}>{saveGamesRoot ?? '-'}</strong>
-        </div>
 
         <label className="path-picker">
-          <span>{t('accountFolder')}</span>
+          <span>{t('userName')}</span>
+          <select
+            value={selectedUserName ?? ''}
+            disabled={busy || userLocations.length === 0}
+            onChange={(event) => onUserChange(event.target.value)}
+          >
+            {userLocations.length === 0 && <option value="">{t('rootNotFound')}</option>}
+            {userLocations.map((location) => (
+              <option key={location.userName} value={location.userName}>
+                {location.userName}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="path-picker">
+          <span>{t('gameName')}</span>
           <select
             value={selectedAccountDir ?? ''}
             disabled={busy || accountDirs.length === 0}
@@ -374,16 +390,13 @@ export function App(): JSX.Element {
             <strong>{sessionName ?? '-'}</strong>
             {gameBlueprintDir && <small title={gameBlueprintDir}>{gameBlueprintDir}</small>}
           </div>
-          <button className="primary" onClick={enterManager} disabled={!canEnter}>
+          <button className="primary" onClick={enterManager} disabled={busy}>
             {t('openBlueprintManager')}
           </button>
         </div>
 
         <div className="fallback-actions">
           <span className="muted">{t('manualFallback')}</span>
-          <button className="link" onClick={() => void chooseSaveGamesRoot()} disabled={busy}>
-            {t('chooseSaveGamesRoot')}
-          </button>
           <button className="link" onClick={() => void chooseSaveFileManually()} disabled={busy}>
             {t('chooseSav')}
           </button>
@@ -439,6 +452,24 @@ export function App(): JSX.Element {
           )}
         </div>
       </section>
+
+      {setupWarning && (
+        <div className="modal-backdrop" onClick={() => setSetupWarning(false)}>
+          <div className="modal small-confirm" onClick={(event) => event.stopPropagation()}>
+            <header className="modal-head">
+              <h2>{t('needSaveTitle')}</h2>
+            </header>
+            <div className="confirm-body">
+              <p>{t('needSaveMessage')}</p>
+            </div>
+            <footer className="confirm-actions" style={{ padding: '14px 18px' }}>
+              <button className="primary" onClick={() => setSetupWarning(false)}>
+                {t('gotIt')}
+              </button>
+            </footer>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

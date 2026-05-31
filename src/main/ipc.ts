@@ -5,7 +5,8 @@ import { listBackups } from '../core/backup';
 import { scanBlueprintStructure } from '../core/blueprintCategoryDiscovery';
 import { buildDraftFromExternalMapping, buildDraftFromSave } from '../core/buildDraft';
 import { executeDraftImport, planDraftApply } from '../core/applyDraft';
-import { autoLocateSaveGames, listAccountDirsInRoot, listSavesInAccountDir, locateSaveCandidatesInAccountDir, resolveBlueprintDirForSave } from '../core/locateSaves';
+import { autoLocateSaveGames, listAccountDirsInRoot, listSaveGameLocations, listSavesInAccountDir, locateSaveCandidatesInAccountDir, resolveBlueprintDirForSave } from '../core/locateSaves';
+import { buildAppMenu, type MenuLanguage } from './menu';
 import { resolveSteamPersonaName } from '../core/steam';
 import { dumpSaveToDiagnostics } from '../core/parseSave';
 import { rollbackFromBackup } from '../core/rollback';
@@ -52,7 +53,9 @@ export function registerIpc(): void {
   });
 
   // --- Visual blueprint manager (draft) flow ---
+  ipcMain.handle('menu:setLanguage', async (_event, language: MenuLanguage) => buildAppMenu(language));
   ipcMain.handle('saves:autoLocate', async () => autoLocateSaveGames());
+  ipcMain.handle('saves:locations', async () => listSaveGameLocations());
   ipcMain.handle('saves:accountsInRoot', async (_event, saveGamesRoot: string) => listAccountDirsInRoot(saveGamesRoot));
   ipcMain.handle('saves:listInAccount', async (_event, accountDir: string) => listSavesInAccountDir(accountDir));
   ipcMain.handle('saves:resolveBlueprintDir', async (_event, saveGamesRoot: string, savePath: string) => resolveBlueprintDirForSave(saveGamesRoot, savePath));

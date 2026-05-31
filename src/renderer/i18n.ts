@@ -2,7 +2,7 @@ export type Language = 'zh-CN' | 'en-US';
 
 const translations = {
   'zh-CN': {
-    appTitle: 'Satisfactory 蓝图分类器',
+    appTitle: 'Satisfactory 蓝图整理器',
     appSubtitle: '把外部文件夹结构映射到游戏内蓝图分类，所有修改先进草稿，确认后再写入存档。',
     language: '语言',
     chinese: '中文',
@@ -141,7 +141,7 @@ const translations = {
     gotIt: '知道了'
   },
   'en-US': {
-    appTitle: 'Satisfactory Blueprint Classifier',
+    appTitle: 'Satisfactory Blueprint Organizer',
     appSubtitle: 'Map an external folder tree into in-game blueprint categories. Every change is a draft until you apply it.',
     language: 'Language',
     chinese: '中文',

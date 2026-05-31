@@ -10,7 +10,7 @@ function createWindow(): void {
     height: 860,
     minWidth: 1024,
     minHeight: 720,
-    title: 'Satisfactory Blueprint Classifier',
+    title: 'Satisfactory Blueprint Organizer',
     // Avoid the blank-white flash on launch: keep the window hidden until the
     // renderer has painted its first frame, and match the page background color.
     show: false,

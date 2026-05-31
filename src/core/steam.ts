@@ -13,7 +13,7 @@ export async function resolveSteamPersonaName(steamId: string): Promise<string |
   try {
     const response = await fetch(`https://steamcommunity.com/profiles/${steamId}/?xml=1`, {
       signal: AbortSignal.timeout(6000),
-      headers: { 'User-Agent': 'Mozilla/5.0 (SatisfactoryBlueprintClassifier)' }
+      headers: { 'User-Agent': 'Mozilla/5.0 (SatisfactoryBlueprintOrganizer)' }
     });
     if (!response.ok) return null;
     return parsePersonaName(await response.text());

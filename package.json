@@ -1,5 +1,5 @@
 {
-  "name": "satisfactory-blueprint-classifier",
+  "name": "satisfactory-blueprint-organizer",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -35,8 +35,8 @@
     "vitest": "^2.1.6"
   },
   "build": {
-    "appId": "dev.local.satisfactory-blueprint-classifier",
-    "productName": "Satisfactory Blueprint Classifier",
+    "appId": "dev.local.satisfactory-blueprint-organizer",
+    "productName": "Satisfactory Blueprint Organizer",
     "directories": {
       "output": "release"
     },

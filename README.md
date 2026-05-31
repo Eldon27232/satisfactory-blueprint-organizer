@@ -1,10 +1,10 @@
-# Satisfactory Blueprint Classifier · 幸福工厂蓝图整理器
+# Satisfactory Blueprint Organizer · 幸福工厂蓝图整理器
 
 [English](#english) | [简体中文](#简体中文)
 
-A Windows desktop tool that organizes your Satisfactory blueprints into in-game categories / subcategories with a visual, draft-based editor — drag, rename, re-icon, then write the changes back into the save (with automatic backup and re-read verification). The game's blueprint folder stays flat; only the in-save category metadata changes.
+A desktop tool for quickly organizing Satisfactory blueprints into in-game categories / subcategories with a visual, draft-based editor — drag, rename, re-icon, then write the changes back into the save (with automatic backup and re-read verification). The game's blueprint folder stays flat; only the in-save category metadata changes.
 
-一个 Windows 桌面工具，用可视化的「草稿」编辑器把幸福工厂（Satisfactory）的蓝图整理进游戏内的分类 / 子分类——拖拽、改名、换图标，确认后再写回存档（写前自动备份、写后重读校验）。游戏的蓝图文件目录保持平铺，只修改存档内的分类元数据。
+一个快捷整理幸福工厂（Satisfactory）游戏内蓝图分类的桌面工具，用可视化的「草稿」编辑器拖拽、改名、换图标，确认后再写回存档（写前自动备份、写后重读校验）。游戏的蓝图文件目录保持平铺，只修改存档内的分类元数据。
 
 ---
 
@@ -37,7 +37,7 @@ npm run dist    # package to release/win-unpacked
 npm test        # run unit tests (vitest)
 ```
 
-`npm run dist` produces `release/win-unpacked/Satisfactory Blueprint Classifier.exe`.
+`npm run dist` produces `release/win-unpacked/Satisfactory Blueprint Organizer.exe`.
 `npm run dist:nsis` builds an NSIS installer (may need Windows symlink permission, since electron-builder downloads a resource-edit helper).
 
 ### Save discovery
@@ -97,7 +97,7 @@ npm run dist    # 打包到 release/win-unpacked
 npm test        # 运行单元测试（vitest）
 ```
 
-`npm run dist` 生成 `release/win-unpacked/Satisfactory Blueprint Classifier.exe`。
+`npm run dist` 生成 `release/win-unpacked/Satisfactory Blueprint Organizer.exe`。
 `npm run dist:nsis` 生成 NSIS 安装包（可能需要 Windows 符号链接权限，因为 electron-builder 会下载资源编辑辅助工具）。
 
 ### 存档定位

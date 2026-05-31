@@ -1,4 +1,4 @@
-export const APP_NAME = 'Satisfactory Blueprint Classifier';
+export const APP_NAME = 'Satisfactory Blueprint Organizer';
 export const BACKUPS_DIR = 'Backups';
 export const REPORTS_DIR = 'Reports';
 export const DIAGNOSTICS_DIR = 'diagnostics';

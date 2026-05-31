@@ -1,3 +1,4 @@
+import type { CategoryPlan } from '../shared/draftModel';
 import type { BlueprintCategoryCapability, BlueprintMappingEntry } from '../shared/types';
 import { parseSaveFile, writeSaveFile } from './parseSave';
 
@@ -5,10 +6,34 @@ export interface ApplyBlueprintCategoriesResult {
   categoriesCreated: string[];
   subcategoriesCreated: string[];
   assignments: Array<{ blueprintStem: string; category: string; subcategory: string }>;
-  verification: { passed: boolean; message: string; categoryCounts?: Record<string, number>; undefinedCount?: number };
+  verification: CategoryPlanVerification;
+}
+
+export interface CategoryPlanVerification {
+  passed: boolean;
+  message: string;
+  categoryCounts?: Record<string, number>;
+  undefinedCount?: number;
+  iconMismatches?: string[];
+  duplicateMembership?: string[];
+}
+
+export interface SaveCategoryNode {
+  name: string;
+  iconId: number | null;
+  isUndefined: boolean;
+  subcategories: Array<{ name: string; isUndefined: boolean; blueprintNames: string[] }>;
+}
+
+export interface SaveCategoryTree {
+  categories: SaveCategoryNode[];
 }
 
 type AnyRecord = Record<string, any>;
+
+// ---------------------------------------------------------------------------
+// Legacy entry-based API (still used by the folder-scan import flow)
+// ---------------------------------------------------------------------------
 
 export async function applyBlueprintCategories(savePath: string, entries: BlueprintMappingEntry[], capability: BlueprintCategoryCapability): Promise<ApplyBlueprintCategoriesResult> {
   const assignments = entries.map((entry) => ({
@@ -26,34 +51,188 @@ export async function applyBlueprintCategories(savePath: string, entries: Bluepr
     };
   }
 
+  const plan = planFromEntries(entries);
   const save = await parseSaveFile(savePath);
-  const model = getBlueprintCategoryModel(save);
-  const categoriesCreated: string[] = [];
-  const subcategoriesCreated: string[] = [];
-  const desiredBlueprintStems = [...new Set(assignments.map((assignment) => assignment.blueprintStem))];
-  for (const blueprintStem of desiredBlueprintStems) {
-    removeBlueprintFromAllSubcategories(model.categoryRecords.values, blueprintStem);
-  }
-
-  for (const assignment of assignments) {
-    const { category, createdCategory } = ensureCategory(model.categoryRecords.values, assignment.category);
-    if (createdCategory) categoriesCreated.push(assignment.category);
-    const { subcategory, createdSubcategory } = ensureSubcategory(category, assignment.subcategory);
-    if (createdSubcategory) subcategoriesCreated.push(`${assignment.category}/${assignment.subcategory}`);
-    const names = getBlueprintNamesArray(subcategory);
-    if (!names.values.includes(assignment.blueprintStem)) names.values.push(assignment.blueprintStem);
-  }
-
+  const { categoriesCreated, subcategoriesCreated } = applyCategoryPlanToSave(save, plan);
   await writeSaveFile(savePath, save);
   const reread = await parseSaveFile(savePath);
-  const verification = verifyAssignments(reread, assignments);
-  return {
-    categoriesCreated: [...new Set(categoriesCreated)],
-    subcategoriesCreated: [...new Set(subcategoriesCreated)],
-    assignments,
-    verification
-  };
+  const verification = verifyCategoryPlan(reread, plan);
+  return { categoriesCreated, subcategoriesCreated, assignments, verification };
 }
+
+function planFromEntries(entries: BlueprintMappingEntry[]): CategoryPlan {
+  const categoryMap = new Map<string, Map<string, string[]>>();
+  for (const entry of entries) {
+    const subMap = categoryMap.get(entry.category) ?? new Map<string, string[]>();
+    const stems = subMap.get(entry.subcategory) ?? [];
+    if (!stems.includes(entry.blueprintStem)) stems.push(entry.blueprintStem);
+    subMap.set(entry.subcategory, stems);
+    categoryMap.set(entry.category, subMap);
+  }
+  return [...categoryMap.entries()].map(([category, subMap], categoryIndex) => ({
+    category,
+    iconId: null,
+    menuPriority: categoryIndex,
+    subcategories: [...subMap.entries()].map(([name, blueprintStems], subIndex) => ({ name, menuPriority: subIndex, blueprintStems }))
+  }));
+}
+
+// ---------------------------------------------------------------------------
+// Pure, in-memory save-object operations (filesystem-free; unit testable)
+// ---------------------------------------------------------------------------
+
+/** Read the existing blueprint category tree out of a parsed save object. */
+export function readBlueprintCategoryTree(save: unknown): SaveCategoryTree {
+  const model = getBlueprintCategoryModel(save);
+  const categories = model.categoryRecords.values.map((category: AnyRecord): SaveCategoryNode => {
+    const props = getStructProperties(category);
+    const name = String(getStringPropertyValue(props, 'CategoryName') ?? '');
+    const iconProperty = getProperty(props, 'IconID');
+    const iconId = typeof iconProperty?.value === 'number' ? iconProperty.value : null;
+    return {
+      name,
+      iconId,
+      isUndefined: isUndefinedRecord(props, name),
+      subcategories: getSubCategoryRecordsArray(category).values.map((subcategory: AnyRecord) => {
+        const subProps = getStructProperties(subcategory);
+        const subName = String(getStringPropertyValue(subProps, 'SubCategoryName') ?? '');
+        return {
+          name: subName,
+          isUndefined: isUndefinedRecord(subProps, subName),
+          blueprintNames: getBlueprintNamesArray(subcategory).values.map((value: unknown) => String(value))
+        };
+      })
+    };
+  });
+  return { categories };
+}
+
+/** Apply a declarative CategoryPlan onto a parsed save object in place. */
+export function applyCategoryPlanToSave(save: unknown, plan: CategoryPlan, removedStems: string[] = []): { categoriesCreated: string[]; subcategoriesCreated: string[] } {
+  const model = getBlueprintCategoryModel(save);
+  const categories = model.categoryRecords.values as AnyRecord[];
+  const subcategoryTemplate = captureSubcategoryTemplate(categories);
+  const categoriesCreated: string[] = [];
+  const subcategoriesCreated: string[] = [];
+
+  // Defensive single-membership strip: drop every planned/recycled stem from all
+  // existing subcategories up front. The full-overwrite step below rewrites every
+  // surviving subcategory's BlueprintNames anyway, but this guarantees a recycled
+  // stem can never linger even if the plan shape changes.
+  const allStems = new Set<string>(removedStems);
+  for (const planCategory of plan) {
+    for (const planSub of planCategory.subcategories) {
+      for (const stem of planSub.blueprintStems) allStems.add(stem);
+    }
+  }
+  for (const stem of allStems) removeBlueprintFromAllSubcategories(categories, stem);
+
+  // Full overwrite: rebuild the category/subcategory arrays from the plan ONLY.
+  // Existing records are reused (preserving template / lastEditedBy / struct shape);
+  // any record the plan no longer contains — including a stale empty "Undefined"
+  // leftover from a previous apply — is dropped instead of lingering in the save.
+  const orderedCategories: AnyRecord[] = [];
+  const seenCategories = new Set<AnyRecord>();
+  for (const planCategory of plan) {
+    const { category, createdCategory } = ensureCategory(categories, planCategory.category, subcategoryTemplate);
+    if (createdCategory) categoriesCreated.push(planCategory.category);
+    if (planCategory.iconId !== null && planCategory.iconId !== undefined) {
+      setNumberPropertyIfPresent(getStructProperties(category), 'IconID', planCategory.iconId);
+    }
+    setNumberPropertyIfPresent(getStructProperties(category), 'MenuPriority', planCategory.menuPriority);
+
+    const orderedSubs: AnyRecord[] = [];
+    const seenSubs = new Set<AnyRecord>();
+    for (const planSub of planCategory.subcategories) {
+      const { subcategory, createdSubcategory } = ensureSubcategory(category, planSub.name, subcategoryTemplate);
+      if (createdSubcategory) subcategoriesCreated.push(`${planCategory.category}/${planSub.name}`);
+      setNumberPropertyIfPresent(getStructProperties(subcategory), 'MenuPriority', planSub.menuPriority);
+      getBlueprintNamesArray(subcategory).values = [...planSub.blueprintStems];
+      if (!seenSubs.has(subcategory)) {
+        seenSubs.add(subcategory);
+        orderedSubs.push(subcategory);
+      }
+    }
+    // Drop subcategories the plan no longer contains; keep plan order via MenuPriority.
+    getSubCategoryRecordsArray(category).values = orderedSubs;
+
+    if (!seenCategories.has(category)) {
+      seenCategories.add(category);
+      orderedCategories.push(category);
+    }
+  }
+
+  // Drop categories the plan no longer contains. This is what removes the stale
+  // empty "Undefined" the user deleted in the manager, and fixes the off-by-one
+  // ordering caused by a leftover record keeping its old MenuPriority / array slot.
+  model.categoryRecords.values = orderedCategories;
+
+  return { categoriesCreated: [...new Set(categoriesCreated)], subcategoriesCreated: [...new Set(subcategoriesCreated)] };
+}
+
+function captureSubcategoryTemplate(categories: AnyRecord[]): AnyRecord | null {
+  for (const category of categories) {
+    const subcategories = getSubCategoryRecordsArray(category);
+    if (subcategories.values.length > 0) return deepClone(subcategories.values[0]);
+  }
+  return null;
+}
+
+/** Verify a parsed save matches the desired plan (BlueprintNames, IconID, single membership). */
+export function verifyCategoryPlan(save: unknown, plan: CategoryPlan): CategoryPlanVerification {
+  try {
+    const tree = readBlueprintCategoryTree(save);
+    const categoryCounts: Record<string, number> = {};
+    let undefinedCount = 0;
+    const membership = new Map<string, number>();
+    for (const category of tree.categories) {
+      let count = 0;
+      for (const subcategory of category.subcategories) {
+        count += subcategory.blueprintNames.length;
+        for (const name of subcategory.blueprintNames) membership.set(name, (membership.get(name) ?? 0) + 1);
+      }
+      categoryCounts[category.name] = count;
+      if (category.isUndefined) undefinedCount += count;
+    }
+
+    const missing: string[] = [];
+    const iconMismatches: string[] = [];
+    for (const planCategory of plan) {
+      const category = tree.categories.find((item) => item.name === planCategory.category);
+      if (planCategory.iconId !== null && planCategory.iconId !== undefined) {
+        if (category && category.iconId !== planCategory.iconId) {
+          iconMismatches.push(`${planCategory.category}: expected IconID ${planCategory.iconId}, found ${category.iconId ?? 'none'}`);
+        }
+      }
+      for (const planSub of planCategory.subcategories) {
+        const subcategory = category?.subcategories.find((item) => item.name === planSub.name);
+        for (const stem of planSub.blueprintStems) {
+          if (!subcategory || !subcategory.blueprintNames.includes(stem)) {
+            missing.push(`${stem} -> ${planCategory.category}/${planSub.name}`);
+          }
+        }
+      }
+    }
+
+    const duplicateMembership = [...membership.entries()].filter(([, count]) => count > 1).map(([name]) => name);
+    const passed = missing.length === 0 && duplicateMembership.length === 0;
+    const messageParts: string[] = [];
+    if (passed) {
+      messageParts.push(`重读存档后已验证全部分类归属。Undefined 含 ${undefinedCount} 个蓝图名。`);
+    } else {
+      if (missing.length) messageParts.push(`缺失归属：${missing.join(', ')}`);
+      if (duplicateMembership.length) messageParts.push(`蓝图出现在多个子分类：${duplicateMembership.join(', ')}`);
+    }
+    if (iconMismatches.length) messageParts.push(`IconID 未写入：${iconMismatches.join('; ')}`);
+    return { passed, message: messageParts.join(' '), categoryCounts, undefinedCount, iconMismatches, duplicateMembership };
+  } catch (error) {
+    return { passed: false, message: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Capability probe (used by reports + workflow)
+// ---------------------------------------------------------------------------
 
 export function canAccessBlueprintCategoryRecords(save: unknown): { canWrite: boolean; reason: string; evidence: unknown[] } {
   try {
@@ -71,6 +250,10 @@ export function canAccessBlueprintCategoryRecords(save: unknown): { canWrite: bo
     };
   }
 }
+
+// ---------------------------------------------------------------------------
+// Low-level save-object helpers (unchanged contract)
+// ---------------------------------------------------------------------------
 
 function getBlueprintCategoryModel(save: unknown): { gameState: AnyRecord; categoryRecords: AnyRecord } {
   const objects = Object.values((save as AnyRecord).levels ?? {}).flatMap((level: any) => level?.objects ?? []) as AnyRecord[];
@@ -107,10 +290,9 @@ function getBlueprintCategoryModel(save: unknown): { gameState: AnyRecord; categ
   return { gameState: categoryHost, categoryRecords };
 }
 
-function ensureCategory(categories: AnyRecord[], name: string): { category: AnyRecord; createdCategory: boolean } {
+function ensureCategory(categories: AnyRecord[], name: string, subcategoryTemplate: AnyRecord | null): { category: AnyRecord; createdCategory: boolean } {
   const existing = categories.find((category) => getStringPropertyValue(getStructProperties(category), 'CategoryName') === name);
   if (existing) {
-    normalizeMenuPriorityIfNeeded(getStructProperties(existing), nextMenuPriority(categories.filter((item) => item !== existing).map((item) => getProperty(getStructProperties(item), 'MenuPriority')?.value)));
     return { category: existing, createdCategory: false };
   }
   const template = categories.find((category) => getStringPropertyValue(getStructProperties(category), 'IsUndefined') === true) ?? categories[0];
@@ -118,42 +300,31 @@ function ensureCategory(categories: AnyRecord[], name: string): { category: AnyR
   const category = deepClone(template);
   setStringLikeProperty(getStructProperties(category), 'CategoryName', name);
   setBooleanPropertyIfPresent(getStructProperties(category), 'IsUndefined', false);
-  setNumberPropertyIfPresent(getStructProperties(category), 'MenuPriority', nextMenuPriority(categories.map((item) => getProperty(getStructProperties(item), 'MenuPriority')?.value)));
-  const subcategories = getSubCategoryRecordsArray(category);
-  const subTemplate = subcategories.values[0];
-  if (!subTemplate) throw new Error('Cannot create category: no BlueprintSubCategoryRecord template exists.');
-  subcategories.values = [];
-  const undefinedSubcategory = deepClone(subTemplate);
-  setStringLikeProperty(getStructProperties(undefinedSubcategory), 'SubCategoryName', 'Undefined');
-  setBooleanPropertyIfPresent(getStructProperties(undefinedSubcategory), 'IsUndefined', true);
-  setNumberPropertyIfPresent(getStructProperties(undefinedSubcategory), 'MenuPriority', 0);
-  getBlueprintNamesArray(undefinedSubcategory).values = [];
-  subcategories.values.push(undefinedSubcategory);
+  setNumberPropertyIfPresent(getStructProperties(category), 'IconID', -1);
+  // Start with NO subcategories; the plan adds exactly the ones the user defined.
+  // (Previously an extra "Undefined" subcategory was injected here.)
+  if (!subcategoryTemplate && getSubCategoryRecordsArray(category).values.length === 0) {
+    throw new Error('Cannot create category: no BlueprintSubCategoryRecord template exists.');
+  }
+  getSubCategoryRecordsArray(category).values = [];
   categories.push(category);
   return { category, createdCategory: true };
 }
 
-function ensureSubcategory(category: AnyRecord, name: string): { subcategory: AnyRecord; createdSubcategory: boolean } {
+function ensureSubcategory(category: AnyRecord, name: string, subcategoryTemplate: AnyRecord | null): { subcategory: AnyRecord; createdSubcategory: boolean } {
   const subcategories = getSubCategoryRecordsArray(category);
   const existing = subcategories.values.find((subcategory: AnyRecord) => getStringPropertyValue(getStructProperties(subcategory), 'SubCategoryName') === name);
   if (existing) {
-    normalizeMenuPriorityIfNeeded(getStructProperties(existing), nextMenuPriority(subcategories.values.filter((item: AnyRecord) => item !== existing).map((item: AnyRecord) => getProperty(getStructProperties(item), 'MenuPriority')?.value)));
     return { subcategory: existing, createdSubcategory: false };
   }
-  const template = subcategories.values[0] ?? findAnySubcategoryTemplate(category);
+  const template = subcategories.values[0] ?? subcategoryTemplate;
   if (!template) throw new Error('Cannot create subcategory: no BlueprintSubCategoryRecord template exists.');
   const subcategory = deepClone(template);
   setStringLikeProperty(getStructProperties(subcategory), 'SubCategoryName', name);
   setBooleanPropertyIfPresent(getStructProperties(subcategory), 'IsUndefined', false);
-  setNumberPropertyIfPresent(getStructProperties(subcategory), 'MenuPriority', nextMenuPriority(subcategories.values.map((item: AnyRecord) => getProperty(getStructProperties(item), 'MenuPriority')?.value)));
   getBlueprintNamesArray(subcategory).values = [];
   subcategories.values.push(subcategory);
   return { subcategory, createdSubcategory: true };
-}
-
-function findAnySubcategoryTemplate(category: AnyRecord): AnyRecord | null {
-  const subcategories = getSubCategoryRecordsArray(category);
-  return subcategories.values[0] ?? null;
 }
 
 function removeBlueprintFromAllSubcategories(categories: AnyRecord[], blueprintStem: string): void {
@@ -163,35 +334,6 @@ function removeBlueprintFromAllSubcategories(categories: AnyRecord[], blueprintS
       const names = getBlueprintNamesArray(subcategory);
       names.values = names.values.filter((value: unknown) => value !== blueprintStem);
     }
-  }
-}
-
-function verifyAssignments(save: unknown, assignments: Array<{ blueprintStem: string; category: string; subcategory: string }>): { passed: boolean; message: string; categoryCounts?: Record<string, number>; undefinedCount?: number } {
-  try {
-    const model = getBlueprintCategoryModel(save);
-    const missing: string[] = [];
-    const categoryCounts: Record<string, number> = {};
-    let undefinedCount = 0;
-    for (const category of model.categoryRecords.values) {
-      const categoryName = String(getStringPropertyValue(getStructProperties(category), 'CategoryName'));
-      let count = 0;
-      for (const subcategory of getSubCategoryRecordsArray(category).values) {
-        count += getBlueprintNamesArray(subcategory).values.length;
-      }
-      categoryCounts[categoryName] = count;
-      if (isUndefinedRecord(getStructProperties(category), categoryName)) undefinedCount += count;
-    }
-    for (const assignment of assignments) {
-      const category = model.categoryRecords.values.find((item: AnyRecord) => getStringPropertyValue(getStructProperties(item), 'CategoryName') === assignment.category);
-      const subcategory = category ? getSubCategoryRecordsArray(category).values.find((item: AnyRecord) => getStringPropertyValue(getStructProperties(item), 'SubCategoryName') === assignment.subcategory) : null;
-      const hasBlueprint = subcategory ? getBlueprintNamesArray(subcategory).values.includes(assignment.blueprintStem) : false;
-      if (!hasBlueprint) missing.push(`${assignment.blueprintStem} -> ${assignment.category}/${assignment.subcategory}`);
-    }
-    return missing.length === 0
-      ? { passed: true, message: `All blueprint category assignments were verified after rereading the save. Undefined contains ${undefinedCount} assigned blueprint name(s).`, categoryCounts, undefinedCount }
-      : { passed: false, message: `Missing assignments: ${missing.join(', ')}`, categoryCounts, undefinedCount };
-  } catch (error) {
-    return { passed: false, message: error instanceof Error ? error.message : String(error) };
   }
 }
 
@@ -243,18 +385,6 @@ function setBooleanPropertyIfPresent(properties: AnyRecord, name: string, value:
 function setNumberPropertyIfPresent(properties: AnyRecord, name: string, value: number): void {
   const property = getProperty(properties, name);
   if (property && typeof property.value === 'number') property.value = value;
-}
-
-function nextMenuPriority(values: unknown[]): number {
-  const finiteValues = values.filter((value): value is number => typeof value === 'number' && Number.isFinite(value) && value < 1_000_000);
-  return finiteValues.length === 0 ? 1 : Math.max(...finiteValues) + 1;
-}
-
-function normalizeMenuPriorityIfNeeded(properties: AnyRecord, fallback: number): void {
-  const property = getProperty(properties, 'MenuPriority');
-  if (property && (typeof property.value !== 'number' || !Number.isFinite(property.value) || property.value > 1_000_000)) {
-    property.value = fallback;
-  }
 }
 
 function isUndefinedRecord(properties: AnyRecord, name: string): boolean {

@@ -1,13 +1,106 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { SAVE_EXT } from '../shared/constants';
-import type { Notice, SaveCandidate, SaveDiscoveryResult } from '../shared/types';
+import type { AutoLocateResult, BlueprintDirResolution, Notice, SaveCandidate, SaveDiscoveryResult } from '../shared/types';
 import { pathExists } from './fsUtils';
-import { parseSaveMetadata } from './parseSave';
+import { parseSaveHeaderMetadata } from './parseSave';
 
 const MAX_RECURSIVE_SAVE_FILES = 300;
-const MAX_METADATA_PARSE_FILES = 25;
+// Header-only parsing is ~1ms, so we can afford to read every prefix-matched candidate.
+const MAX_METADATA_PARSE_FILES = 300;
 const SKIP_RECURSIVE_DIR_NAMES = new Set(['blueprints', 'backup', 'backups', 'reports', 'diagnostics', 'node_modules']);
+
+// ---------------------------------------------------------------------------
+// Auto-locate flow: start from the fixed SaveGames root, pick account + save,
+// then derive the blueprint dir from the chosen save's SessionName. This is the
+// inverse of the legacy "derive everything from a chosen blueprint dir" flow,
+// which is kept below for the older import workflow.
+// ---------------------------------------------------------------------------
+
+/** The fixed Windows SaveGames root: %LOCALAPPDATA%\FactoryGame\Saved\SaveGames (no hard-coded user name). */
+export function getDefaultSaveGamesRoot(): string | null {
+  const localAppData = process.env.LOCALAPPDATA;
+  if (!localAppData) return null;
+  return path.join(localAppData, 'FactoryGame', 'Saved', 'SaveGames');
+}
+
+/** List account folders directly under a SaveGames root (excluding `blueprints`). */
+export async function listAccountDirsInRoot(saveGamesRoot: string): Promise<string[]> {
+  if (!(await pathExists(saveGamesRoot))) return [];
+  const entries = await fs.readdir(saveGamesRoot, { withFileTypes: true });
+  return entries
+    .filter((entry) => entry.isDirectory() && entry.name.toLowerCase() !== 'blueprints')
+    .map((entry) => path.join(saveGamesRoot, entry.name))
+    .sort((a, b) => path.basename(a).localeCompare(path.basename(b)));
+}
+
+/** Auto-locate the SaveGames root and list its account folders (excluding `blueprints`). */
+export async function autoLocateSaveGames(): Promise<AutoLocateResult> {
+  const saveGamesRoot = getDefaultSaveGamesRoot();
+  if (!saveGamesRoot || !(await pathExists(saveGamesRoot))) {
+    return { saveGamesRoot, rootExists: false, accountDirs: [] };
+  }
+  return { saveGamesRoot, rootExists: true, accountDirs: await listAccountDirsInRoot(saveGamesRoot) };
+}
+
+/** List every .sav directly in an account dir (no SessionName filter), with header metadata. */
+export async function listSavesInAccountDir(accountDir: string): Promise<SaveCandidate[]> {
+  if (!(await pathExists(accountDir))) return [];
+  const warnings: Notice[] = [];
+  const savePaths = await findSaveFiles(accountDir, false, warnings);
+  const candidates: SaveCandidate[] = [];
+  for (const savePath of savePaths) {
+    const stat = await fs.stat(savePath);
+    const fileName = path.basename(savePath);
+    const candidate: SaveCandidate = {
+      path: savePath,
+      fileName,
+      fileNameTimestamp: parseSatisfactorySaveTimestamp(fileName),
+      modifiedTime: stat.mtime.toISOString(),
+      size: stat.size,
+      prefixMatched: false,
+      headerMatched: null,
+      hasSessionConflict: false,
+      matchedSession: false,
+      parsed: false,
+      saveKind: inferSaveKind(fileName)
+    };
+    try {
+      const metadata = await parseSaveHeaderMetadata(savePath);
+      candidate.parsed = true;
+      candidate.sessionName = isReliableParsedSessionName(metadata.sessionName) ? metadata.sessionName : undefined;
+      candidate.mapName = metadata.mapName;
+      candidate.saveName = metadata.saveName;
+      candidate.playTimeSeconds = metadata.playTimeSeconds;
+    } catch (error) {
+      candidate.parseError = error instanceof Error ? error.message : String(error);
+    }
+    candidates.push(candidate);
+  }
+  return candidates.sort((a, b) => Number(new Date(b.modifiedTime)) - Number(new Date(a.modifiedTime)));
+}
+
+/** Resolve SaveGames\blueprints\<SessionName> for a chosen .sav (SessionName from the save header). */
+export async function resolveBlueprintDirForSave(saveGamesRoot: string, savePath: string): Promise<BlueprintDirResolution> {
+  const notices: Notice[] = [];
+  let sessionName: string | null = null;
+  try {
+    const metadata = await parseSaveHeaderMetadata(savePath);
+    if (isReliableParsedSessionName(metadata.sessionName)) sessionName = metadata.sessionName;
+  } catch (error) {
+    notices.push({ severity: 'warning', code: 'SAVE_HEADER_READ_FAILED', message: `无法读取存档头部以确定 SessionName：${error instanceof Error ? error.message : String(error)}`, path: savePath });
+  }
+  if (!sessionName) {
+    notices.push({ severity: 'error', code: 'SESSION_NAME_UNRESOLVED', message: '无法从存档确定 SessionName，因而无法定位蓝图目录。', path: savePath });
+    return { blueprintDir: null, sessionName: null, exists: false, notices };
+  }
+  const blueprintDir = path.join(saveGamesRoot, 'blueprints', sessionName);
+  const exists = await pathExists(blueprintDir);
+  if (!exists) {
+    notices.push({ severity: 'warning', code: 'BLUEPRINT_DIR_MISSING', message: `未找到该会话的蓝图目录：blueprints\\${sessionName}（此存档可能还没有蓝图）。`, path: blueprintDir });
+  }
+  return { blueprintDir, sessionName, exists, notices };
+}
 
 export function deriveSaveGamesRoot(gameBlueprintDir: string): { sessionName: string; saveGamesRoot: string; warnings: Notice[]; errors: Notice[] } {
   const normalized = path.resolve(gameBlueprintDir);
@@ -138,7 +231,7 @@ export async function locateSaveCandidatesInAccountDir(gameBlueprintDir: string,
         candidates.push(candidate);
         continue;
       }
-      const metadata = await parseSaveMetadata(savePath);
+      const metadata = await parseSaveHeaderMetadata(savePath);
       candidate.parsed = true;
       candidate.sessionName = metadata.sessionName;
       candidate.mapName = metadata.mapName;

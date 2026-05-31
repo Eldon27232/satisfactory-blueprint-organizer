@@ -1,122 +1,264 @@
-import { AlertTriangle, ArchiveRestore, CheckCircle2, FolderOpen, Play, RotateCcw, Search, ShieldAlert } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
-import type { BackupRecord, DryRunResult, ImportReport, Notice } from '../shared/types';
+import { AlertTriangle, ArchiveRestore, CheckCircle2, FolderOpen, RotateCcw, ShieldAlert } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import type { DraftTree } from '../shared/draftModel';
+import type { BackupRecord, ImportReport, Notice, SaveCandidate } from '../shared/types';
 import { detectLanguage, saveLanguage, translate, type Language } from './i18n';
+import { ManagerView } from './ManagerView';
+
+type View = 'setup' | 'manager';
 
 export function App(): JSX.Element {
   const [language, setLanguage] = useState<Language>(() => detectLanguage());
-  const [gameBlueprintDir, setGameBlueprintDir] = useState('');
-  const [mappingDir, setMappingDir] = useState('');
+  const [view, setView] = useState<View>('setup');
+
+  // Auto-located, fixed SaveGames root flow.
+  const [saveGamesRoot, setSaveGamesRoot] = useState<string | null>(null);
+  const [rootExists, setRootExists] = useState(true);
+  const [accountDirs, setAccountDirs] = useState<string[]>([]);
   const [selectedAccountDir, setSelectedAccountDir] = useState<string | null>(null);
-  const [recursiveSaveScan, setRecursiveSaveScan] = useState(false);
+  const [saves, setSaves] = useState<SaveCandidate[]>([]);
   const [selectedSavePath, setSelectedSavePath] = useState<string | null>(null);
-  const [dryRun, setDryRun] = useState<DryRunResult | null>(null);
-  const [allowOverwrite, setAllowOverwrite] = useState(false);
-  const [gameClosedConfirmed, setGameClosedConfirmed] = useState(false);
+  const [gameBlueprintDir, setGameBlueprintDir] = useState('');
+  const [sessionName, setSessionName] = useState<string | null>(null);
+  const [locateNotices, setLocateNotices] = useState<Notice[]>([]);
+  const [steamNames, setSteamNames] = useState<Record<string, string>>({});
+
+  const [draft, setDraft] = useState<DraftTree | null>(null);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState('');
+  const [statusKind, setStatusKind] = useState<'info' | 'error'>('info');
   const [importReport, setImportReport] = useState<ImportReport | null>(null);
   const [backups, setBackups] = useState<BackupRecord[]>([]);
+  const [selectedBackupPath, setSelectedBackupPath] = useState<string>('');
 
-  const defaultSave = useMemo(() => {
-    const matched = dryRun?.saveDiscovery?.candidates.filter((candidate) => candidate.matchedSession && !candidate.hasSessionConflict) ?? [];
-    return matched.length === 1 ? matched[0].path : null;
-  }, [dryRun]);
-  const effectiveSavePath = selectedSavePath ?? defaultSave;
-  const effectiveAccountDir = selectedAccountDir ?? dryRun?.selectedAccountDir ?? null;
-  const notices = useMemo<Notice[]>(() => [...(dryRun?.warnings ?? []), ...(dryRun?.errors ?? [])], [dryRun]);
-  const canExecute = Boolean(dryRun && effectiveSavePath && gameClosedConfirmed && (allowOverwrite || dryRun.scan.targetExistingCount === 0) && dryRun.errors.length === 0);
   const t = (key: Parameters<typeof translate>[1]): string => translate(language, key);
 
   useEffect(() => {
+    void autoLocate();
     void refreshBackups();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  function changeLanguage(nextLanguage: Language): void {
-    setLanguage(nextLanguage);
-    saveLanguage(nextLanguage);
+  // Resolve Steam persona names for account folders named like a SteamID64 (once each).
+  const steamAttempted = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    for (const accountDir of accountDirs) {
+      const name = baseName(accountDir);
+      if (!STEAMID64_RE.test(name) || steamAttempted.current.has(name)) continue;
+      steamAttempted.current.add(name);
+      void window.sbc?.getSteamName(name).then((resolved) => {
+        if (resolved) setSteamNames((previous) => ({ ...previous, [name]: resolved }));
+      });
+    }
+  }, [accountDirs]);
+
+  function accountLabel(accountDir: string): string {
+    const name = baseName(accountDir);
+    return steamNames[name] ?? name;
   }
 
-  async function chooseGameDir(): Promise<void> {
+  function saveLabel(candidate: SaveCandidate): string {
+    const base = candidate.saveName?.trim() || candidate.fileName;
+    const when = candidate.fileNameTimestamp ?? candidate.modifiedTime.replace('T', ' ').slice(0, 19);
+    return `${base} · ${when}`;
+  }
+
+  function api(): NonNullable<Window['sbc']> | null {
     if (!window.sbc) {
-      setStatus('Electron preload API is not available. Please run the packaged app again after rebuilding.');
-      return;
+      setStatusKind('error');
+      setStatus('Electron preload API 不可用，请重新构建后再运行打包应用。');
+      return null;
     }
-    const selected = await window.sbc.chooseGameBlueprintDirectory();
-    if (selected) {
-      setGameBlueprintDir(selected);
-      setDryRun(null);
-      setSelectedSavePath(null);
+    return window.sbc;
+  }
+
+  function changeLanguage(next: Language): void {
+    setLanguage(next);
+    saveLanguage(next);
+  }
+
+  async function runBusy(action: () => Promise<void>, successMessage?: string): Promise<void> {
+    setBusy(true);
+    setStatus('');
+    setStatusKind('info');
+    try {
+      await action();
+      if (successMessage) {
+        setStatusKind('info');
+        setStatus(successMessage);
+      }
+    } catch (error) {
+      setStatusKind('error');
+      setStatus(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function autoLocate(): Promise<void> {
+    const sbc = api();
+    if (!sbc) return;
+    await runBusy(async () => {
+      const result = await sbc.autoLocateSaveGames();
+      setSaveGamesRoot(result.saveGamesRoot);
+      setRootExists(result.rootExists);
+      setAccountDirs(result.accountDirs);
       setSelectedAccountDir(null);
-    }
-  }
-
-  async function chooseMappingDir(): Promise<void> {
-    if (!window.sbc) {
-      setStatus('Electron preload API is not available. Please run the packaged app again after rebuilding.');
-      return;
-    }
-    const selected = await window.sbc.chooseMappingDirectory();
-    if (selected) {
-      setMappingDir(selected);
-      setDryRun(null);
-    }
-  }
-
-  async function chooseSaveFile(): Promise<void> {
-    if (!window.sbc) {
-      setStatus('Electron preload API is not available. Please run the packaged app again after rebuilding.');
-      return;
-    }
-    const selected = await window.sbc.chooseSavFile();
-    if (selected) {
-      setSelectedSavePath(selected);
-      setSelectedAccountDir(parentDir(selected));
-      setDryRun(null);
-    }
-  }
-
-  async function runDryRun(): Promise<void> {
-    if (!gameBlueprintDir || !mappingDir) return;
-    if (!window.sbc) {
-      setStatus('Electron preload API is not available. Please run the packaged app again after rebuilding.');
-      return;
-    }
-    await runBusy(t('scanCompleted'), async () => {
-      const result = await window.sbc.dryRun(gameBlueprintDir, mappingDir, selectedSavePath, selectedAccountDir, recursiveSaveScan);
-      setDryRun(result);
-      if (!selectedAccountDir && result.selectedAccountDir) setSelectedAccountDir(result.selectedAccountDir);
-      if (!selectedSavePath) setSelectedSavePath(result.selectedSavePath);
+      setSaves([]);
+      setSelectedSavePath(null);
+      setGameBlueprintDir('');
+      setSessionName(null);
+      setLocateNotices([]);
+      if (!result.rootExists) {
+        setLocateNotices([{ severity: 'error', code: 'SAVEGAMES_ROOT_NOT_FOUND', message: t('rootNotFound'), path: result.saveGamesRoot ?? '' }]);
+        return;
+      }
+      if (result.accountDirs.length === 0) {
+        setLocateNotices([{ severity: 'error', code: 'NO_ACCOUNT_DIR', message: t('noAccountFound'), path: result.saveGamesRoot ?? '' }]);
+        return;
+      }
+      const firstAccount = result.accountDirs[0];
+      setSelectedAccountDir(firstAccount);
+      await loadSaves(firstAccount, result.saveGamesRoot);
     });
   }
 
-  async function execute(): Promise<void> {
-    if (!effectiveSavePath) return;
-    if (!window.sbc) {
-      setStatus('Electron preload API is not available. Please run the packaged app again after rebuilding.');
-      return;
+  async function loadSaves(accountDir: string, root: string | null): Promise<void> {
+    const sbc = window.sbc;
+    if (!sbc) return;
+    const list = await sbc.listSavesInAccount(accountDir);
+    setSaves(list);
+    if (list.length > 0 && root) {
+      await selectSave(list[0].path, root);
+    } else {
+      setSelectedSavePath(null);
+      setGameBlueprintDir('');
+      setSessionName(null);
+      setLocateNotices(list.length === 0 ? [{ severity: 'warning', code: 'NO_SAVE_IN_ACCOUNT', message: t('noSaveInAccount'), path: accountDir }] : []);
     }
-    await runBusy(t('importCompleted'), async () => {
-      const report = await window.sbc.executeImport({
-        gameBlueprintDir,
-        mappingDir,
-        selectedAccountDir: effectiveAccountDir ?? parentDir(effectiveSavePath),
-        recursiveSaveScan,
-        selectedSavePath: effectiveSavePath,
-        allowOverwrite,
-        gameClosedConfirmed
-      });
+  }
+
+  async function selectSave(savePath: string, root: string): Promise<void> {
+    const sbc = window.sbc;
+    if (!sbc) return;
+    setSelectedSavePath(savePath);
+    const resolution = await sbc.resolveBlueprintDir(root, savePath);
+    setGameBlueprintDir(resolution.blueprintDir ?? '');
+    setSessionName(resolution.sessionName);
+    setLocateNotices(resolution.notices);
+  }
+
+  function onAccountChange(accountDir: string): void {
+    setSelectedAccountDir(accountDir);
+    void runBusy(async () => {
+      await loadSaves(accountDir, saveGamesRoot);
+    });
+  }
+
+  function onSaveChange(savePath: string): void {
+    void runBusy(async () => {
+      if (saveGamesRoot) await selectSave(savePath, saveGamesRoot);
+    });
+  }
+
+  // --- Manual fallbacks (kept small): override the auto-located paths. ---
+  async function chooseSaveGamesRoot(): Promise<void> {
+    const sbc = api();
+    if (!sbc) return;
+    const dir = await sbc.chooseDirectory();
+    if (!dir) return;
+    await runBusy(async () => {
+      const accounts = await sbc.listAccountsInRoot(dir);
+      setSaveGamesRoot(dir);
+      setRootExists(true);
+      setAccountDirs(accounts);
+      setSelectedAccountDir(null);
+      setSaves([]);
+      setSelectedSavePath(null);
+      setGameBlueprintDir('');
+      setSessionName(null);
+      setLocateNotices(accounts.length === 0 ? [{ severity: 'warning', code: 'NO_ACCOUNT_DIR', message: t('noAccountFound'), path: dir }] : []);
+      if (accounts.length > 0) {
+        setSelectedAccountDir(accounts[0]);
+        await loadSaves(accounts[0], dir);
+      }
+    });
+  }
+
+  async function chooseSaveFileManually(): Promise<void> {
+    const sbc = api();
+    if (!sbc) return;
+    const file = await sbc.chooseSavFile();
+    if (!file) return;
+    const accountDir = parentDir(file);
+    const root = saveGamesRoot ?? parentDir(accountDir);
+    await runBusy(async () => {
+      setSaveGamesRoot(root);
+      setSelectedAccountDir(accountDir);
+      setAccountDirs((previous) => (previous.includes(accountDir) ? previous : [...previous, accountDir]));
+      const list = await sbc.listSavesInAccount(accountDir);
+      setSaves(list);
+      await selectSave(file, root);
+    });
+  }
+
+  async function chooseBlueprintDirManually(): Promise<void> {
+    const sbc = api();
+    if (!sbc) return;
+    const dir = await sbc.chooseGameBlueprintDirectory();
+    if (dir) setGameBlueprintDir(dir);
+  }
+
+  async function enterManager(): Promise<void> {
+    const sbc = api();
+    if (!sbc || !gameBlueprintDir || !selectedSavePath) return;
+    await runBusy(async () => {
+      const tree = await sbc.buildDraftFromSave(gameBlueprintDir, selectedSavePath);
+      const blocking = tree.buildNotices.filter((notice) => notice.severity === 'error');
+      if (blocking.length > 0) {
+        throw new Error(blocking.map((notice) => `[${notice.code}] ${notice.message}`).join('\n'));
+      }
+      setDraft(tree);
+      setImportReport(null);
+      setView('manager');
+    });
+  }
+
+  async function importExternalMapping(): Promise<void> {
+    const sbc = api();
+    if (!sbc || !draft) return;
+    const mappingDir = await sbc.chooseMappingDirectory();
+    if (!mappingDir) return;
+    await runBusy(async () => {
+      const tree = await sbc.buildDraftFromExternal(draft.gameBlueprintDir, mappingDir, draft.savePath);
+      const blocking = tree.buildNotices.filter((notice) => notice.severity === 'error');
+      if (blocking.length > 0) {
+        throw new Error(blocking.map((notice) => `[${notice.code}] ${notice.message}`).join('\n'));
+      }
+      setDraft(tree);
+    }, t('externalImported'));
+  }
+
+  async function fetchPlan() {
+    const sbc = window.sbc;
+    if (!sbc || !draft) throw new Error('No draft.');
+    return sbc.planDraftApply(draft);
+  }
+
+  async function applyDraft(gameClosedConfirmed: boolean): Promise<void> {
+    const sbc = api();
+    if (!sbc || !draft) return;
+    await runBusy(async () => {
+      const report = await sbc.applyDraft({ draft, gameClosedConfirmed });
       setImportReport(report);
       await refreshBackups();
-    });
-  }
-
-  async function repairPlayerState(): Promise<void> {
-    if (!effectiveSavePath || !gameBlueprintDir || !window.sbc) return;
-    await runBusy(t('playerStateRepairCompleted'), async () => {
-      const report = await window.sbc.repairPlayerStates(effectiveSavePath, gameBlueprintDir);
-      setStatus(`${t('playerStateRepairCompleted')}\nBackup: ${report.backupDir}\nRemoved objects: ${report.result.removedObjects.length}`);
-      await refreshBackups();
+      // Rebuild the draft from the freshly written save so further edits stay consistent.
+      if (draft.savePath) {
+        const refreshed = await sbc.buildDraftFromSave(draft.gameBlueprintDir, draft.savePath);
+        setDraft(refreshed);
+      }
+      setStatusKind(report.verificationResult.passed ? 'info' : 'error');
+      setStatus(`${t('importCompleted')} ${report.verificationResult.passed ? t('verifyPassed') : t('verifyFailed')}\n${report.verificationResult.message}`);
     });
   }
 
@@ -126,28 +268,43 @@ export function App(): JSX.Element {
   }
 
   async function rollback(backupDir: string): Promise<void> {
-    if (!window.sbc) {
-      setStatus('Electron preload API is not available. Please run the packaged app again after rebuilding.');
-      return;
-    }
-    await runBusy(t('rollbackCompleted'), async () => {
-      await window.sbc.rollback(backupDir);
+    const sbc = api();
+    if (!sbc) return;
+    await runBusy(async () => {
+      await sbc.rollback(backupDir);
       await refreshBackups();
+    }, t('rollbackCompleted'));
+  }
+
+  async function repairPlayerState(): Promise<void> {
+    const sbc = api();
+    if (!sbc || !selectedSavePath || !gameBlueprintDir) return;
+    await runBusy(async () => {
+      const report = await sbc.repairPlayerStates(selectedSavePath, gameBlueprintDir);
+      await refreshBackups();
+      setStatus(`${t('playerStateRepairCompleted')}\nBackup: ${report.backupDir}\nRemoved: ${report.result.removedObjects.length}`);
     });
   }
 
-  async function runBusy(successMessage: string, action: () => Promise<void>): Promise<void> {
-    setBusy(true);
-    setStatus('');
-    try {
-      await action();
-      setStatus(successMessage);
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : String(error));
-    } finally {
-      setBusy(false);
-    }
+  if (view === 'manager' && draft) {
+    return (
+      <main className="app-shell manager-shell">
+        <ManagerView
+          language={language}
+          draft={draft}
+          setDraft={setDraft}
+          busy={busy}
+          onBack={() => setView('setup')}
+          onApply={applyDraft}
+          onImportExternal={importExternalMapping}
+          fetchPlan={fetchPlan}
+        />
+        {status && statusKind === 'error' && <pre className="floating-status error">{status}</pre>}
+      </main>
+    );
   }
+
+  const canEnter = Boolean(gameBlueprintDir && selectedSavePath) && !busy;
 
   return (
     <main className="app-shell">
@@ -164,225 +321,137 @@ export function App(): JSX.Element {
               <option value="en-US">{t('english')}</option>
             </select>
           </label>
-          <button className="secondary" onClick={refreshBackups} disabled={busy}>
-            <RotateCcw size={16} /> {t('refreshBackups')}
+          <button className="secondary" onClick={() => void autoLocate()} disabled={busy}>
+            <RotateCcw size={16} /> {t('relocate')}
           </button>
         </div>
       </header>
 
       <section className="panel paths-panel">
-        <PathPicker label={t('gameBlueprintFolder')} selectLabel={t('select')} value={gameBlueprintDir} onChoose={chooseGameDir} onChange={setGameBlueprintDir} />
-        <PathPicker label={t('externalMappingFolder')} selectLabel={t('select')} value={mappingDir} onChoose={chooseMappingDir} onChange={setMappingDir} />
+        <h2>{t('selectSaveTitle')}</h2>
+        <p className="muted">{t('selectSaveDesc')}</p>
+
+        <div className="info-row">
+          <span>{t('saveGamesRoot')}</span>
+          <strong title={saveGamesRoot ?? ''}>{saveGamesRoot ?? '-'}</strong>
+        </div>
+
+        <label className="path-picker">
+          <span>{t('accountFolder')}</span>
+          <select
+            value={selectedAccountDir ?? ''}
+            disabled={busy || accountDirs.length === 0}
+            onChange={(event) => onAccountChange(event.target.value)}
+          >
+            {accountDirs.length === 0 && <option value="">{t('noAccountFound')}</option>}
+            {accountDirs.map((accountDir) => (
+              <option key={accountDir} value={accountDir}>
+                {accountLabel(accountDir)}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="path-picker">
+          <span>{t('save')}</span>
+          <select
+            value={selectedSavePath ?? ''}
+            disabled={busy || saves.length === 0}
+            onChange={(event) => onSaveChange(event.target.value)}
+          >
+            {saves.length === 0 && <option value="">{t('noSaveInAccount')}</option>}
+            {saves.map((candidate) => (
+              <option key={candidate.path} value={candidate.path}>
+                {saveLabel(candidate)}
+              </option>
+            ))}
+          </select>
+        </label>
+
         <div className="actions-row">
-          <button onClick={runDryRun} disabled={busy || !gameBlueprintDir || !mappingDir}>
-            <Search size={16} /> {t('scanDryRun')}
+          <div className="selected-save">
+            <span className="muted">{t('sessionName')}</span>
+            <strong>{sessionName ?? '-'}</strong>
+            {gameBlueprintDir && <small title={gameBlueprintDir}>{gameBlueprintDir}</small>}
+          </div>
+          <button className="primary" onClick={enterManager} disabled={!canEnter}>
+            {t('openBlueprintManager')}
           </button>
-          <button className="secondary" onClick={chooseSaveFile} disabled={busy}>
-            <FolderOpen size={16} /> {t('chooseSav')}
+        </div>
+
+        <div className="fallback-actions">
+          <span className="muted">{t('manualFallback')}</span>
+          <button className="link" onClick={() => void chooseSaveGamesRoot()} disabled={busy}>
+            {t('chooseSaveGamesRoot')}
           </button>
-          <label className="check-row">
-            <input type="checkbox" checked={allowOverwrite} onChange={(event) => setAllowOverwrite(event.target.checked)} />
-            {t('allowOverwrite')}
-          </label>
-          <label className="check-row">
-            <input type="checkbox" checked={gameClosedConfirmed} onChange={(event) => setGameClosedConfirmed(event.target.checked)} />
-            {t('gameClosed')}
-          </label>
-          <label className="check-row">
-            <input type="checkbox" checked={recursiveSaveScan} onChange={(event) => setRecursiveSaveScan(event.target.checked)} />
-            {t('recursiveSaveScan')}
-          </label>
-          <button className="danger" onClick={execute} disabled={busy || !canExecute}>
-            <Play size={16} /> {t('execute')}
+          <button className="link" onClick={() => void chooseSaveFileManually()} disabled={busy}>
+            {t('chooseSav')}
+          </button>
+          <button className="link" onClick={() => void chooseBlueprintDirManually()} disabled={busy}>
+            {t('chooseBlueprintDir')}
           </button>
         </div>
       </section>
 
-      {dryRun && (
-        <>
-          <section className="grid two">
-            <div className="panel">
-              <h2>{t('detectedPaths')}</h2>
-              <Info label="SessionName" value={dryRun.saveDiscovery?.sessionName ?? '-'} />
-              <Info label={t('saveGamesRoot')} value={dryRun.saveDiscovery?.saveGamesRoot ?? '-'} />
-              <Info label={t('savWriter')} value={dryRun.categoryCapability.reason} />
-
-              <h2 className="subhead">{t('accountFolder')}</h2>
-              <div className="save-list">
-                {(dryRun.saveDiscovery?.accountDirs ?? []).map((accountDir) => (
-                  <label className={`save-item ${effectiveAccountDir === accountDir ? 'selected' : ''}`} key={accountDir}>
-                    <input
-                      type="radio"
-                      checked={effectiveAccountDir === accountDir}
-                      onChange={() => {
-                        setSelectedAccountDir(accountDir);
-                        setSelectedSavePath(null);
-                      }}
-                    />
-                    <span>
-                      <strong>{accountDir.split(/[\\/]/).pop()}</strong>
-                      <small>{accountDir}</small>
-                    </span>
-                  </label>
-                ))}
-              </div>
-
-              <h2 className="subhead">{t('saveCandidates')}</h2>
-              <div className="actions-row wrap compact-actions">
-                <button className="secondary" onClick={chooseSaveFile} disabled={busy}>
-                  <FolderOpen size={16} /> {t('chooseSav')}
-                </button>
-                {selectedSavePath && !dryRun.saveDiscovery?.candidates.some((candidate) => candidate.path === selectedSavePath) && (
-                  <small>{t('manuallySelected')}: {selectedSavePath}</small>
-                )}
-              </div>
-              <div className="save-list">
-                {(dryRun.saveDiscovery?.candidates ?? []).map((candidate) => (
-                  <label className={`save-item ${effectiveSavePath === candidate.path ? 'selected' : ''}`} key={candidate.path}>
-                    <input type="radio" checked={effectiveSavePath === candidate.path} onChange={() => setSelectedSavePath(candidate.path)} />
-                    <span>
-                      <strong>{candidate.fileName}</strong>
-                      <small>{candidate.path}</small>
-                      <small>
-                        {t('filenameTime')}: {candidate.fileNameTimestamp ?? '-'} | {t('mtime')}: {new Date(candidate.modifiedTime).toLocaleString()} | {(candidate.size / 1024 / 1024).toFixed(1)} MB
-                      </small>
-                      <small>
-                        {t('matched')}: {String(candidate.matchedSession)} | {t('prefix')}: {String(candidate.prefixMatched)} | {t('header')}: {String(candidate.headerMatched)} | {candidate.saveKind ?? 'unknown'}
-                      </small>
-                      <small>{t('parser')}: {candidate.parsed ? `${candidate.sessionName ?? '-'} / ${candidate.saveName ?? '-'}` : `${t('failed')}: ${candidate.parseError ?? 'unknown'}`}</small>
-                    </span>
-                  </label>
-                ))}
-              </div>
-            </div>
-            <div className="panel">
-              <h2>{t('dryRunSummary')}</h2>
-              <div className="stats">
-                <Stat label={t('blueprints')} value={dryRun.scan.entries.length} />
-                <Stat label={t('missingCfg')} value={dryRun.scan.missingCfgCount} />
-                <Stat label={t('duplicates')} value={dryRun.scan.duplicateStemCount} />
-                <Stat label={t('categories')} value={dryRun.categoriesToCreate.length} />
-                <Stat label={t('subcategories')} value={dryRun.subcategoriesToCreate.length} />
-                <Stat label={t('copyFiles')} value={dryRun.filesToCopy} />
-                <Stat label={t('overwrite')} value={dryRun.filesToOverwrite} />
-              </div>
-            </div>
-          </section>
-
-          <section className="panel">
-            <h2>{t('mappingPreview')}</h2>
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>{t('blueprint')}</th>
-                    <th>{t('category')}</th>
-                    <th>{t('subcategory')}</th>
-                    <th>{t('relativePath')}</th>
-                    <th>{t('status')}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {dryRun.scan.entries.map((entry) => (
-                    <tr key={entry.sourceSbpPath}>
-                      <td>{entry.blueprintStem}</td>
-                      <td>{entry.category}</td>
-                      <td>{entry.subcategory}</td>
-                      <td>{entry.relativePath}</td>
-                      <td>{entry.errors.length ? 'Error' : entry.warnings.length ? 'Warning' : 'OK'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
-
-          <section className="panel">
-            <h2>{t('warningsErrors')}</h2>
-            <NoticeList notices={notices} emptyLabel={t('noNotice')} />
-          </section>
-        </>
+      {locateNotices.length > 0 && (
+        <section className="panel">
+          <NoticeList notices={locateNotices} emptyLabel={t('allGood')} />
+        </section>
       )}
 
       <section className="grid two">
         <div className="panel">
-          <h2>{t('reportsDiagnostics')}</h2>
+          <h2>{t('backupsRollback')}</h2>
           <div className="actions-row wrap">
-            <button className="secondary" disabled={!importReport} onClick={() => importReport && window.sbc.openPath(importReport.reportDir)}>
-              <FolderOpen size={16} /> {t('openReport')}
+            <button className="secondary" onClick={() => window.sbc?.openPath('Backups')}>
+              <FolderOpen size={16} /> {t('openBackups')}
             </button>
-            <button className="secondary" disabled={!effectiveSavePath} onClick={() => effectiveSavePath && window.sbc.dumpSave(effectiveSavePath).then(setStatus)}>
-              <ShieldAlert size={16} /> {t('dumpSave')}
-            </button>
-            <button className="secondary" disabled={!effectiveSavePath} onClick={() => effectiveSavePath && window.sbc.scanBlueprintStructure(effectiveSavePath).then(setStatus)}>
-              <Search size={16} /> {t('scanStructure')}
-            </button>
-            <button className="secondary" disabled={busy || !effectiveSavePath || !gameBlueprintDir} onClick={repairPlayerState}>
+            <button className="secondary" disabled={busy || !selectedSavePath || !gameBlueprintDir} onClick={repairPlayerState}>
               <ShieldAlert size={16} /> {t('repairPlayerState')}
             </button>
+            <button className="secondary" disabled={!importReport} onClick={() => importReport && window.sbc?.openPath(importReport.reportDir)}>
+              <FolderOpen size={16} /> {t('openReport')}
+            </button>
           </div>
-          {status && <pre className="status">{status}</pre>}
+          <div className="actions-row">
+            <select className="backup-select" value={selectedBackupPath} onChange={(event) => setSelectedBackupPath(event.target.value)} disabled={busy || backups.length === 0}>
+              <option value="">{backups.length === 0 ? t('noBackups') : t('selectBackup')}</option>
+              {backups.map((backup) => (
+                <option key={backup.path} value={backup.path}>
+                  {backup.id}
+                </option>
+              ))}
+            </select>
+            <button className="secondary" disabled={busy || !selectedBackupPath} onClick={() => selectedBackupPath && rollback(selectedBackupPath)}>
+              <ArchiveRestore size={16} /> {t('rollback')}
+            </button>
+          </div>
         </div>
 
         <div className="panel">
-          <h2>{t('backupsRollback')}</h2>
-          <div className="actions-row">
-            <button className="secondary" onClick={() => window.sbc.openPath('Backups')}>
-              <FolderOpen size={16} /> {t('openBackups')}
-            </button>
-          </div>
-          <div className="backup-list">
-            {backups.map((backup) => (
-              <div className="backup-item" key={backup.path}>
-                <div>
-                  <strong>{backup.id}</strong>
-                  <small>{backup.path}</small>
-                </div>
-                <button className="secondary" disabled={busy} onClick={() => rollback(backup.path)}>
-                  <ArchiveRestore size={16} /> {t('rollback')}
-                </button>
-              </div>
-            ))}
-          </div>
+          <h2>{t('warningsErrors')}</h2>
+          {status && statusKind === 'error' ? (
+            <pre className="status error">{status}</pre>
+          ) : (
+            <div className="empty-state">
+              <CheckCircle2 size={18} /> {t('allGood')}
+            </div>
+          )}
         </div>
       </section>
     </main>
   );
 }
 
+const STEAMID64_RE = /^7656119\d{10}$/;
+
 function parentDir(filePath: string): string {
   const normalized = filePath.replaceAll('\\', '/');
   return normalized.slice(0, normalized.lastIndexOf('/')).replaceAll('/', '\\');
 }
 
-function PathPicker(props: { label: string; selectLabel: string; value: string; onChange: (value: string) => void; onChoose: () => void }): JSX.Element {
-  return (
-    <label className="path-picker">
-      <span>{props.label}</span>
-      <input value={props.value} onChange={(event) => props.onChange(event.target.value)} />
-      <button type="button" className="secondary" onClick={props.onChoose}>
-        <FolderOpen size={16} /> {props.selectLabel}
-      </button>
-    </label>
-  );
-}
-
-function Info(props: { label: string; value: string }): JSX.Element {
-  return (
-    <div className="info-row">
-      <span>{props.label}</span>
-      <strong title={props.value}>{props.value}</strong>
-    </div>
-  );
-}
-
-function Stat(props: { label: string; value: number }): JSX.Element {
-  return (
-    <div className="stat">
-      <span>{props.label}</span>
-      <strong>{props.value}</strong>
-    </div>
-  );
+function baseName(targetPath: string): string {
+  return targetPath.replace(/[\\/]+$/, '').split(/[\\/]/).pop() ?? targetPath;
 }
 
 function NoticeList(props: { notices: Notice[]; emptyLabel: string }): JSX.Element {

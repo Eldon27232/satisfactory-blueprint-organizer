@@ -1,6 +1,6 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { Parser } from '@etothepii/satisfactory-file-parser';
+import { Parser, SatisfactorySaveHeader, SaveReader } from '@etothepii/satisfactory-file-parser';
 import { DIAGNOSTICS_DIR } from '../shared/constants';
 import { ensureDir, timestampForPath, writeJson } from './fsUtils';
 
@@ -9,6 +9,41 @@ export interface SaveMetadata {
   mapName?: string;
   saveName?: string;
   playTimeSeconds?: number;
+}
+
+/**
+ * Read just the (uncompressed) save header for candidate metadata. ~1ms vs the
+ * ~hundreds of ms a full ParseSave costs, because the body chunks are never
+ * inflated. Reads only the first chunk of the file, falling back to the whole
+ * file if the header is unexpectedly large.
+ */
+export async function parseSaveHeaderMetadata(savePath: string): Promise<SaveMetadata> {
+  const tryParse = (buffer: ArrayBufferLike): SaveMetadata => {
+    const header = SatisfactorySaveHeader.Parse(new SaveReader(buffer));
+    return {
+      sessionName: header.sessionName,
+      mapName: header.mapName,
+      saveName: header.saveName,
+      playTimeSeconds: header.playDurationSeconds
+    };
+  };
+  try {
+    return tryParse(await readFileHead(savePath, 1 << 20));
+  } catch {
+    const file = new Uint8Array(await fs.readFile(savePath)).buffer;
+    return tryParse(file);
+  }
+}
+
+async function readFileHead(savePath: string, bytes: number): Promise<ArrayBuffer> {
+  const handle = await fs.open(savePath, 'r');
+  try {
+    const buffer = Buffer.alloc(bytes);
+    const { bytesRead } = await handle.read(buffer, 0, bytes, 0);
+    return new Uint8Array(buffer.subarray(0, bytesRead)).buffer;
+  } finally {
+    await handle.close();
+  }
 }
 
 export async function parseSaveFile(savePath: string): Promise<unknown> {

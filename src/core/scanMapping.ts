@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { BLUEPRINT_CONFIG_EXT, BLUEPRINT_EXT } from '../shared/constants';
+import { UNNAMED } from '../shared/draftModel';
 import type { BlueprintMappingEntry, Notice, ScanReport } from '../shared/types';
 import { pathExists } from './fsUtils';
 
@@ -45,14 +46,6 @@ export async function scanMappingFolder(options: ScanMappingOptions): Promise<Sc
     const entryWarnings: Notice[] = [];
     const entryErrors: Notice[] = [];
 
-    if (segments.length < 3) {
-      entryErrors.push({
-        severity: 'error',
-        code: 'ROOT_OR_MISSING_CATEGORY',
-        message: '蓝图必须至少放在 Category\\Subcategory\\文件.sbp 下。',
-        path: sbpPath
-      });
-    }
     if (illegalWindowsNamePattern.test(stem) || stem.trim().length === 0) {
       entryErrors.push({
         severity: 'error',
@@ -62,14 +55,19 @@ export async function scanMappingFolder(options: ScanMappingOptions): Promise<Sc
       });
     }
 
-    const category = segments[0] ?? 'Undefined';
-    const subPath = segments.slice(1, -1);
-    const subcategory = subPath.length <= 1 ? subPath[0] ?? 'Undefined' : subPath.join(' - ');
-    if (subPath.length > 1) {
+    // Tolerant folder mapping:
+    //   root file            -> 未命名 / 未命名
+    //   <dir>/file           -> <dir> / 未命名
+    //   <dir>/<sub>/file     -> <dir> / <sub>
+    //   deeper               -> <dir> / <sub>, extra path ignored (+warning)
+    const dirSegments = segments.slice(0, -1);
+    const category = dirSegments[0] ?? UNNAMED;
+    const subcategory = dirSegments[1] ?? UNNAMED;
+    if (dirSegments.length > 2) {
       entryWarnings.push({
         severity: 'warning',
-        code: 'DEPTH_COLLAPSED',
-        message: `超过两级目录，已映射为 Category="${category}", Subcategory="${subcategory}"。`,
+        code: 'DEPTH_TRIMMED',
+        message: `超过两级目录，仅取前两级 Category="${category}", Subcategory="${subcategory}"，其余路径忽略。`,
         path: sbpPath
       });
     }

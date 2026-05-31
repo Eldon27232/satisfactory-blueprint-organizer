@@ -64,6 +64,21 @@ export interface SaveDiscoveryResult {
   errors: Notice[];
 }
 
+/** Result of auto-locating the fixed Satisfactory SaveGames root and its account folders. */
+export interface AutoLocateResult {
+  saveGamesRoot: string | null;
+  rootExists: boolean;
+  accountDirs: string[];
+}
+
+/** Blueprint dir resolved from a selected .sav (SaveGames\blueprints\<SessionName>). */
+export interface BlueprintDirResolution {
+  blueprintDir: string | null;
+  sessionName: string | null;
+  exists: boolean;
+  notices: Notice[];
+}
+
 export interface BlueprintCategoryCapability {
   canWrite: boolean;
   confidence: 'none' | 'diagnostic-only' | 'reliable';
@@ -105,6 +120,9 @@ export interface ImportReport {
   copiedFiles: string[];
   overwrittenFiles: string[];
   skippedFiles: string[];
+  renamedFiles?: Array<{ from: string; to: string }>;
+  deletedFiles?: string[];
+  iconUpdates?: Array<{ category: string; iconId: number }>;
   categoriesCreated: string[];
   subcategoriesCreated: string[];
   blueprintAssignments: Array<{

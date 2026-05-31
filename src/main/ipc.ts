@@ -3,10 +3,15 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { listBackups } from '../core/backup';
 import { scanBlueprintStructure } from '../core/blueprintCategoryDiscovery';
+import { buildDraftFromExternalMapping, buildDraftFromSave } from '../core/buildDraft';
+import { executeDraftImport, planDraftApply } from '../core/applyDraft';
+import { autoLocateSaveGames, listAccountDirsInRoot, listSavesInAccountDir, locateSaveCandidatesInAccountDir, resolveBlueprintDirForSave } from '../core/locateSaves';
+import { resolveSteamPersonaName } from '../core/steam';
 import { dumpSaveToDiagnostics } from '../core/parseSave';
 import { rollbackFromBackup } from '../core/rollback';
 import { diffBlueprintCategorySaves } from '../core/saveDiff';
 import { createDryRun, executeImport, repairPlayerStates } from '../core/workflow';
+import type { DraftApplyOptions, DraftTree } from '../shared/draftModel';
 import type { ExecuteOptions } from '../shared/types';
 
 type DialogCacheKey = 'gameBlueprintDir' | 'mappingDir' | 'saveFile';
@@ -44,6 +49,28 @@ export function registerIpc(): void {
   });
   ipcMain.handle('workflow:repairPlayerStates', async (_event, savePath: string, blueprintDir: string) => {
     return repairPlayerStates(savePath, blueprintDir);
+  });
+
+  // --- Visual blueprint manager (draft) flow ---
+  ipcMain.handle('saves:autoLocate', async () => autoLocateSaveGames());
+  ipcMain.handle('saves:accountsInRoot', async (_event, saveGamesRoot: string) => listAccountDirsInRoot(saveGamesRoot));
+  ipcMain.handle('saves:listInAccount', async (_event, accountDir: string) => listSavesInAccountDir(accountDir));
+  ipcMain.handle('saves:resolveBlueprintDir', async (_event, saveGamesRoot: string, savePath: string) => resolveBlueprintDirForSave(saveGamesRoot, savePath));
+  ipcMain.handle('saves:discover', async (_event, gameBlueprintDir: string, selectedAccountDir?: string | null, recursive?: boolean) => {
+    return locateSaveCandidatesInAccountDir(gameBlueprintDir, selectedAccountDir ?? null, Boolean(recursive));
+  });
+  ipcMain.handle('account:steamName', async (_event, steamId: string) => resolveSteamPersonaName(steamId));
+  ipcMain.handle('draft:fromSave', async (_event, gameBlueprintDir: string, savePath: string) => {
+    return buildDraftFromSave(gameBlueprintDir, savePath);
+  });
+  ipcMain.handle('draft:fromExternal', async (_event, gameBlueprintDir: string, mappingDir: string, savePath?: string | null) => {
+    return buildDraftFromExternalMapping(gameBlueprintDir, mappingDir, savePath ?? null);
+  });
+  ipcMain.handle('draft:plan', async (_event, draft: DraftTree) => {
+    return planDraftApply(draft);
+  });
+  ipcMain.handle('draft:apply', async (_event, options: DraftApplyOptions) => {
+    return executeDraftImport(options);
   });
 
   ipcMain.handle('backup:list', async () => listBackups());

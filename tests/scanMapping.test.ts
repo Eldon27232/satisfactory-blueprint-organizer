@@ -31,11 +31,25 @@ describe('scanMappingFolder', () => {
     expect(report.missingCfgCount).toBe(0);
   });
 
-  it('collapses deeper paths into a two-level subcategory', async () => {
+  it('maps a root-level blueprint to 未命名 / 未命名', async () => {
+    await fs.writeFile(path.join(mappingDir, 'loose.sbp'), 'sbp');
+    const report = await scanMappingFolder({ mappingDir, gameBlueprintDir: gameDir });
+    expect(report.entries[0]).toMatchObject({ blueprintStem: 'loose', category: '未命名', subcategory: '未命名' });
+  });
+
+  it('maps a one-level folder to category / 未命名', async () => {
+    const dir = path.join(mappingDir, 'Power');
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(path.join(dir, 'turbo.sbp'), 'sbp');
+    const report = await scanMappingFolder({ mappingDir, gameBlueprintDir: gameDir });
+    expect(report.entries[0]).toMatchObject({ blueprintStem: 'turbo', category: 'Power', subcategory: '未命名' });
+  });
+
+  it('trims deeper paths to the first two levels with a warning', async () => {
     await writeBlueprint('Power', path.join('Coal', 'Mk2'), 'plant', true);
     const report = await scanMappingFolder({ mappingDir, gameBlueprintDir: gameDir });
-    expect(report.entries[0].subcategory).toBe('Coal - Mk2');
-    expect(report.entries[0].warnings.some((warning) => warning.code === 'DEPTH_COLLAPSED')).toBe(true);
+    expect(report.entries[0]).toMatchObject({ category: 'Power', subcategory: 'Coal' });
+    expect(report.entries[0].warnings.some((warning) => warning.code === 'DEPTH_TRIMMED')).toBe(true);
   });
 
   it('warns duplicate stems after flattening without blocking multi-category assignment', async () => {

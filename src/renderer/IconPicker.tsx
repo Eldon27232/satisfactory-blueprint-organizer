@@ -1,6 +1,6 @@
 import { X } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import { listVisibleBlueprintIcons, type BlueprintIconRecord, type BlueprintIconType } from '../shared/blueprintIcons';
+import { getBlueprintIconDisplayName, listVisibleBlueprintIcons, type BlueprintIconRecord, type BlueprintIconType } from '../shared/blueprintIcons';
 import { translate, type Language } from './i18n';
 
 const ICON_TYPES: BlueprintIconType[] = ['ESIT_Building', 'ESIT_Equipment', 'ESIT_Part', 'ESIT_Material', 'ESIT_Monochrome', 'ESIT_Custom', 'ESIT_MapStamp'];
@@ -23,9 +23,10 @@ export function IconPicker(props: IconPickerProps): JSX.Element {
     return allIcons.filter((icon) => {
       if (type !== 'all' && icon.iconType !== type) return false;
       if (!needle) return true;
-      return icon.name.toLowerCase().includes(needle) || String(icon.id).includes(needle);
+      const displayName = getBlueprintIconDisplayName(icon, props.language).toLowerCase();
+      return displayName.includes(needle) || icon.name.toLowerCase().includes(needle) || String(icon.id).includes(needle);
     });
-  }, [allIcons, query, type]);
+  }, [allIcons, props.language, query, type]);
 
   return (
     <div className="modal-backdrop" onClick={props.onClose}>
@@ -55,11 +56,11 @@ export function IconPicker(props: IconPickerProps): JSX.Element {
             <button
               key={icon.id}
               className={`icon-cell ${props.currentIconId === icon.id ? 'selected' : ''}`}
-              title={`${icon.name} (#${icon.id})`}
+              title={`${getBlueprintIconDisplayName(icon, props.language)} (#${icon.id})`}
               onClick={() => props.onPick(icon.id)}
             >
               <IconImage icon={icon} />
-              <span>{icon.name}</span>
+              <span>{getBlueprintIconDisplayName(icon, props.language)}</span>
             </button>
           ))}
         </div>

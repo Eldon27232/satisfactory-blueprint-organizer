@@ -2,7 +2,7 @@ import { AlertTriangle, ArchiveRestore, CheckCircle2, FolderOpen, RotateCcw, Shi
 import { useEffect, useRef, useState } from 'react';
 import type { DraftTree } from '../shared/draftModel';
 import type { BackupRecord, ImportReport, Notice, SaveCandidate, SaveGameLocation } from '../shared/types';
-import { detectLanguage, saveLanguage, translate, type Language } from './i18n';
+import { availableLanguages, detectLanguage, saveLanguage, translate, type Language } from './i18n';
 import { ManagerView } from './ManagerView';
 import { Titlebar } from './Titlebar';
 
@@ -327,9 +327,12 @@ export function App(): JSX.Element {
         <div className="top-actions">
           <label className="language-picker">
             <span>{t('language')}</span>
-            <select value={language} onChange={(event) => changeLanguage(event.target.value as Language)}>
-              <option value="zh-CN">{t('chinese')}</option>
-              <option value="en-US">{t('english')}</option>
+            <select value={language} onChange={(event) => changeLanguage(event.target.value)}>
+              {availableLanguages.map((option) => (
+                <option key={option.code} value={option.code}>
+                  {option.label}
+                </option>
+              ))}
             </select>
           </label>
           <button className="secondary" onClick={() => void autoLocate()} disabled={busy}>

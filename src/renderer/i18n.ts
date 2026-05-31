@@ -1,286 +1,44 @@
-export type Language = 'zh-CN' | 'en-US';
+import enUS from './locales/en-US.json';
 
-const translations = {
-  'zh-CN': {
-    appTitle: 'Satisfactory 蓝图整理器',
-    appSubtitle: '把外部文件夹结构映射到游戏内蓝图分类，所有修改先进草稿，确认后再写入存档。',
-    language: '语言',
-    chinese: '中文',
-    english: 'English',
-    refreshBackups: '刷新备份',
+// 所有翻译外置到 ./locales/*.json，每个文件一个语言。新增一个 lang 文件即被自动识别，
+// 无需改代码。'_label' 是该语言在选择器中显示的名字，不作为内容 key。
+type LocaleData = Record<string, string>;
 
-    // setup
-    step1Title: '第一步 · 选择路径',
-    step1Desc: '选择游戏蓝图目录与目标存档。外部映射目录可选——不选则直接整理当前存档里的分类。',
-    gameBlueprintFolder: '游戏蓝图文件夹',
-    externalMappingFolder: '外部映射文件夹（可选）',
-    select: '选择',
-    optional: '可选',
-    accountFolder: '账户 / 用户目录',
-    saveCandidates: '存档候选',
-    chooseSav: '手动选择 .sav',
-    recursiveSaveScan: '递归扫描存档',
-    manuallySelected: '手动选择',
-    discoverSaves: '扫描存档',
-    expandList: '展开选择',
-    collapseList: '收起',
-    currentSelection: '当前选择',
-    noSaveSelected: '未选择存档',
-    enterManagerManual: '整理当前存档分类',
-    enterManagerImport: '导入外部映射并整理',
-    detectedPaths: '识别路径',
-    saveGamesRoot: 'SaveGames 根目录',
-    sessionName: 'SessionName',
-    filenameTime: '文件名时间',
-    mtime: 'mtime',
-    matched: '匹配',
-    prefix: '前缀',
-    header: 'header',
-    parser: 'parser',
-    failed: '失败',
+// 类型基准取 en-US：保证 t(key) 的 key 受静态检查。
+export type TranslationKey = Exclude<keyof typeof enUS, '_label'>;
 
-    // manager
-    back: '返回',
-    managerSubtitle: '草稿模式：拖拽、改名、换图标都不会立刻写入存档。',
-    apply: '应用到存档',
-    searchBlueprints: '搜索蓝图…',
-    categoriesPane: '分类',
-    addCategory: '新建分类',
-    addSubcategory: '新建子分类',
-    blueprintsCount: '蓝图',
-    inspector: '检查器',
-    categoryName: '分类名',
-    subcategoryName: '子分类名',
-    blueprintName: '蓝图名',
-    origin: '来源',
-    originExternal: '外部导入',
-    originGameDir: '游戏目录',
-    originSave: '仅存档（无文件）',
-    setIcon: '设置图标',
-    clearIcon: '清除图标',
-    icon: '图标',
-    noIcon: '未设置',
-    rename: '重命名',
-    delete: '删除',
-    opDelete: '删除（移入回收站）',
-    opCopy: '复制',
-    opCut: '剪切',
-    opPaste: '粘贴到当前子分类',
-    recycleBin: '回收站',
-    recycleDockHint: '把蓝图拖到这里删除（应用时才执行）。点击查看回收内容，拖回分类即可恢复。',
-    recycleHint: '回收站：应用时这些蓝图会从游戏中删除（文件一并删除，已备份）。可把蓝图拖出以恢复。',
-    deleteBlocked: '非空分类 / 子分类不能直接删除。',
-    deleteSubcategoryConfirm: '子分类「{name}」含 {n} 个蓝图。删除后这些蓝图会移动到同分类的其它子分类（不会删除文件）。确定删除？',
-    selectNodeHint: '在左侧选择一个分类或子分类，或选中蓝图进行编辑。',
-    selectedCount: '已选中 {n} 个蓝图',
-    moveHint: '把蓝图拖到左侧分类 / 子分类即可移动。',
-    nameConflict: '名称冲突：游戏蓝图目录是平铺的，蓝图名必须唯一。',
-    noBlueprintsHere: '这里还没有蓝图。',
-    emptyLabel: '（空）',
-    warnings: 'warning',
-    errors: 'error',
-    warningsErrors: '提示 / 错误',
-    allGood: '没有 warning / error',
+// 语言代码是动态的（取决于存在哪些 lang 文件），所以是 string。
+export type Language = string;
 
-    // icon picker
-    iconPickerTitle: '选择分类图标',
-    iconSearch: '搜索图标…',
-    allTypes: '全部类型',
-    iconNone: '无图标',
+export interface LanguageOption {
+  code: string;
+  label: string;
+}
 
-    // confirm
-    confirmTitle: '应用前确认',
-    targetSave: '目标存档',
-    backupNote: '执行前会自动备份存档和整个蓝图目录到 Backups。',
-    filesToCopy: '要复制的文件',
-    filesToRename: '要重命名的文件',
-    filesToDelete: '要删除的文件（回收站）',
-    categoriesToUpdate: '要更新的分类',
-    iconUpdatesLabel: '要更新的图标',
-    saveOnlyLabel: '仅存档蓝图（无文件，仅改分类）',
-    gameClosedConfirm: '我已关闭 Satisfactory 游戏和专用服务器',
-    cancel: '取消',
-    confirmApply: '确认应用',
-    nothingToApply: '没有可应用的更改。',
+// 构建期把 locales/*.json 全部内联进来（eager），运行时不读磁盘。
+const modules = import.meta.glob<LocaleData>('./locales/*.json', { eager: true, import: 'default' });
 
-    // results / backups
-    importCompleted: '已写入存档。',
-    verifyPassed: '重读存档验证通过',
-    verifyFailed: '重读存档验证失败',
-    openReport: '打开报告',
-    backupsRollback: '备份 / 回滚',
-    openBackups: '打开备份目录',
-    rollback: '回滚',
-    rollbackCompleted: '回滚完成。',
-    repairPlayerState: '修复玩家状态',
-    playerStateRepairCompleted: '玩家状态修复完成。',
+const catalog: Record<string, LocaleData> = {};
+for (const filePath in modules) {
+  const code = filePath.replace(/^.*\/(.+)\.json$/, '$1');
+  catalog[code] = modules[filePath];
+}
 
-    // auto-locate setup + manager additions
-    relocate: '重新定位',
-    selectSaveTitle: '选择存档',
-    selectSaveDesc: '已自动定位 Satisfactory 存档目录。选择账户和存档后即可进入蓝图管理。',
-    save: '存档',
-    openBlueprintManager: '蓝图管理',
-    rootNotFound: '未找到 Satisfactory 存档目录（%LOCALAPPDATA%\\FactoryGame\\Saved\\SaveGames）。',
-    noAccountFound: '存档目录下没有找到账户/用户文件夹。',
-    noSaveInAccount: '该账户下没有 .sav 存档。',
-    selectBackup: '选择备份…',
-    noBackups: '暂无备份',
-    externalImported: '已导入外部映射到当前草稿。',
-    importExternal: '导入外部映射',
-    selectToggle: '选中/取消选中',
-    selectAll: '全选',
-    deselectAll: '取消全选',
-    manualFallback: '手动指定（可选）：',
-    chooseSaveGamesRoot: '选择 SaveGames 根目录',
-    chooseBlueprintDir: '手动选择蓝图目录',
-    userName: '用户名',
-    gameName: '游戏名',
-    needSaveTitle: '尚未选择存档',
-    needSaveMessage: '请先在上方选择用户名、游戏账户和存档（或用下方“手动选择”按钮指定 .sav 和蓝图目录），然后再进入蓝图管理。',
-    gotIt: '知道了'
-  },
-  'en-US': {
-    appTitle: 'Satisfactory Blueprint Organizer',
-    appSubtitle: 'Map an external folder tree into in-game blueprint categories. Every change is a draft until you apply it.',
-    language: 'Language',
-    chinese: '中文',
-    english: 'English',
-    refreshBackups: 'Refresh backups',
+const FALLBACK: Language = catalog['en-US'] ? 'en-US' : Object.keys(catalog)[0];
 
-    step1Title: 'Step 1 · Choose paths',
-    step1Desc: 'Pick the game blueprint folder and a target save. The external mapping folder is optional — skip it to reorganize the categories already in your save.',
-    gameBlueprintFolder: 'Game blueprint folder',
-    externalMappingFolder: 'External mapping folder (optional)',
-    select: 'Select',
-    optional: 'Optional',
-    accountFolder: 'Account / user folder',
-    saveCandidates: 'Save candidates',
-    chooseSav: 'Choose .sav manually',
-    recursiveSaveScan: 'Recursive save scan',
-    manuallySelected: 'manually selected',
-    discoverSaves: 'Scan saves',
-    expandList: 'Expand',
-    collapseList: 'Collapse',
-    currentSelection: 'Current',
-    noSaveSelected: 'No save selected',
-    enterManagerManual: 'Organize current save',
-    enterManagerImport: 'Import mapping & organize',
-    detectedPaths: 'Detected paths',
-    saveGamesRoot: 'SaveGames root',
-    sessionName: 'SessionName',
-    filenameTime: 'filename time',
-    mtime: 'mtime',
-    matched: 'matched',
-    prefix: 'prefix',
-    header: 'header',
-    parser: 'parser',
-    failed: 'failed',
-
-    back: 'Back',
-    managerSubtitle: 'Draft mode: drag, rename and re-icon without touching the save until you apply.',
-    apply: 'Apply to save',
-    searchBlueprints: 'Search blueprints…',
-    categoriesPane: 'Categories',
-    addCategory: 'New category',
-    addSubcategory: 'New subcategory',
-    blueprintsCount: 'blueprints',
-    inspector: 'Inspector',
-    categoryName: 'Category name',
-    subcategoryName: 'Subcategory name',
-    blueprintName: 'Blueprint name',
-    origin: 'Origin',
-    originExternal: 'external import',
-    originGameDir: 'game folder',
-    originSave: 'save only (no file)',
-    setIcon: 'Set icon',
-    clearIcon: 'Clear icon',
-    icon: 'Icon',
-    noIcon: 'none',
-    rename: 'Rename',
-    delete: 'Delete',
-    opDelete: 'Delete (to recycle bin)',
-    opCopy: 'Copy',
-    opCut: 'Cut',
-    opPaste: 'Paste into current subcategory',
-    recycleBin: 'Recycle bin',
-    recycleDockHint: 'Drag blueprints here to delete (executed on apply). Click to view, drag back to a category to restore.',
-    recycleHint: 'Recycle bin: on apply these blueprints are removed from the game (files deleted too, after backup). Drag them out to restore.',
-    deleteBlocked: 'Non-empty categories / subcategories cannot be deleted directly.',
-    deleteSubcategoryConfirm: 'Subcategory "{name}" holds {n} blueprint(s). Deleting it moves them to another subcategory in the same category (files are not deleted). Delete?',
-    selectNodeHint: 'Select a category or subcategory on the left, or select blueprints to edit.',
-    selectedCount: '{n} blueprint(s) selected',
-    moveHint: 'Drag blueprints onto a category / subcategory to move them.',
-    nameConflict: 'Name conflict: the game blueprint folder is flat, so blueprint names must be unique.',
-    noBlueprintsHere: 'No blueprints here yet.',
-    emptyLabel: '(empty)',
-    warnings: 'warning',
-    errors: 'error',
-    warningsErrors: 'Notices / errors',
-    allGood: 'No warning / error',
-
-    iconPickerTitle: 'Choose category icon',
-    iconSearch: 'Search icons…',
-    allTypes: 'All types',
-    iconNone: 'No icon',
-
-    confirmTitle: 'Confirm before applying',
-    targetSave: 'Target save',
-    backupNote: 'The save and the entire blueprint folder are backed up to Backups before anything changes.',
-    filesToCopy: 'Files to copy',
-    filesToRename: 'Files to rename',
-    filesToDelete: 'Files to delete (recycle bin)',
-    categoriesToUpdate: 'Categories to update',
-    iconUpdatesLabel: 'Icons to update',
-    saveOnlyLabel: 'Save-only blueprints (no file, category only)',
-    gameClosedConfirm: 'I have closed the Satisfactory game and dedicated server',
-    cancel: 'Cancel',
-    confirmApply: 'Apply',
-    nothingToApply: 'Nothing to apply.',
-
-    importCompleted: 'Save updated.',
-    verifyPassed: 'Reread verification passed',
-    verifyFailed: 'Reread verification failed',
-    openReport: 'Open report',
-    backupsRollback: 'Backups / rollback',
-    openBackups: 'Open backups',
-    rollback: 'Rollback',
-    rollbackCompleted: 'Rollback completed.',
-    repairPlayerState: 'Repair player state',
-    playerStateRepairCompleted: 'Player state repair completed.',
-
-    relocate: 'Re-locate',
-    selectSaveTitle: 'Select a save',
-    selectSaveDesc: 'The Satisfactory SaveGames folder was auto-located. Pick an account and a save to open the blueprint manager.',
-    save: 'Save',
-    openBlueprintManager: 'Blueprint manager',
-    rootNotFound: 'Satisfactory SaveGames folder not found (%LOCALAPPDATA%\\FactoryGame\\Saved\\SaveGames).',
-    noAccountFound: 'No account/user folder under SaveGames.',
-    noSaveInAccount: 'No .sav saves in this account.',
-    selectBackup: 'Select a backup…',
-    noBackups: 'No backups yet',
-    externalImported: 'External mapping imported into the current draft.',
-    importExternal: 'Import external mapping',
-    selectToggle: 'Toggle selection',
-    selectAll: 'Select all',
-    deselectAll: 'Deselect all',
-    manualFallback: 'Manual override (optional):',
-    chooseSaveGamesRoot: 'Choose SaveGames root',
-    chooseBlueprintDir: 'Choose blueprint folder',
-    userName: 'User',
-    gameName: 'Game',
-    needSaveTitle: 'No save selected',
-    needSaveMessage: 'Pick a user, game account and save above (or use the manual buttons below to choose a .sav and blueprint folder) before opening the blueprint manager.',
-    gotIt: 'Got it'
-  }
-} as const;
-
-export type TranslationKey = keyof typeof translations['en-US'];
+// 选择器里可选的语言，按代码排序，显示各自的 _label。
+export const availableLanguages: LanguageOption[] = Object.keys(catalog)
+  .sort()
+  .map((code) => ({ code, label: catalog[code]['_label'] || code }));
 
 export function detectLanguage(): Language {
   const saved = localStorage.getItem('sbc-language');
-  if (saved === 'zh-CN' || saved === 'en-US') return saved;
-  return navigator.language.toLowerCase().startsWith('zh') ? 'zh-CN' : 'en-US';
+  if (saved && catalog[saved]) return saved;
+  const nav = navigator.language.toLowerCase();
+  const exact = Object.keys(catalog).find((code) => code.toLowerCase() === nav);
+  if (exact) return exact;
+  const prefix = Object.keys(catalog).find((code) => nav.startsWith(code.split('-')[0].toLowerCase()));
+  return prefix ?? FALLBACK;
 }
 
 export function saveLanguage(language: Language): void {
@@ -288,5 +46,6 @@ export function saveLanguage(language: Language): void {
 }
 
 export function translate(language: Language, key: TranslationKey): string {
-  return translations[language][key];
+  const dict = catalog[language] ?? catalog[FALLBACK];
+  return dict[key] ?? catalog[FALLBACK]?.[key] ?? String(key);
 }

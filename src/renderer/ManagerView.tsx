@@ -1,6 +1,6 @@
 import { AlertTriangle, CheckSquare, ChevronDown, ChevronRight, ClipboardPaste, Copy, FolderInput, FolderPlus, ImageIcon, Layers, Minus, Plus, Scissors, Trash2 } from 'lucide-react';
 import { useMemo, useRef, useState } from 'react';
-import { getBlueprintIconById } from '../shared/blueprintIcons';
+import { getBlueprintIconById, getBlueprintIconDisplayName } from '../shared/blueprintIcons';
 import {
   addBlueprints,
   allStemsLower,
@@ -744,7 +744,9 @@ function BlueprintInspector(props: { language: Language; draft: DraftTree; bluep
         <span>{t('icon')}</span>
         <div className="icon-field">
           {icon ? <IconImage icon={icon} size={48} /> : <Layers size={32} className="bp-card-icon" />}
-          <small className="muted">{props.blueprint.iconId === null ? t('noIcon') : `#${props.blueprint.iconId} ${icon?.name ?? ''}`}</small>
+          <small className="muted">
+            {props.blueprint.iconId === null ? t('noIcon') : `#${props.blueprint.iconId} ${icon ? getBlueprintIconDisplayName(icon, props.language) : ''}`}
+          </small>
         </div>
       </div>
       <label className="field">

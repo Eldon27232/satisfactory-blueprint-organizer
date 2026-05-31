@@ -786,6 +786,7 @@ button.danger.ghost {
 
 .bp-card {
   position: relative;
+  display: flex;
   flex-direction: column;
   align-items: stretch;
   gap: 4px;
@@ -805,7 +806,8 @@ button.danger.ghost {
 .bp-card.selected {
   border-color: #287277;
   background: #eef7f6;
-  outline: 1px solid #287277;
+  /* 内描边代替 outline：选中不外扩、不改变占位，避免撑开周围布局。 */
+  box-shadow: inset 0 0 0 2px #287277;
 }
 
 .bp-card.conflict {
@@ -998,14 +1000,23 @@ button.danger.ghost {
 .icon-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+  grid-auto-rows: max-content;
+  align-items: start;
   gap: 10px;
   padding: 14px 18px;
   overflow: auto;
+  /* 在 .modal(flex column) 中成为受限的可滚动区，否则网格会溢出/挤压。 */
+  flex: 1;
+  min-height: 0;
 }
 
 .icon-cell {
+  /* 覆盖全局 button 的 inline-flex / min-height:36px，确保作为网格单元正常排列。 */
+  display: flex;
   flex-direction: column;
   align-items: stretch;
+  width: 100%;
+  min-height: 0;
   gap: 6px;
   padding: 6px;
   border: 1px solid #dde3e0;
@@ -1024,8 +1035,8 @@ button.danger.ghost {
 
 .icon-cell.selected {
   border-color: #287277;
-  outline: 1px solid #287277;
   background: #eef7f6;
+  box-shadow: inset 0 0 0 2px #287277;
 }
 
 .icon-cell span {

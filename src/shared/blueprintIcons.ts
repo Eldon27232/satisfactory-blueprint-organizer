@@ -19,6 +19,8 @@ export interface BlueprintIconRecord {
   name: string;
   localizationTable: string | null;
   localizationKey: string | null;
+  displayNameZhHans?: string | null;
+  displayNameSource?: string | null;
   texture: string;
   itemDescriptor: string | null;
   imagePath: string;
@@ -37,4 +39,9 @@ export function listVisibleBlueprintIcons(): BlueprintIconRecord[] {
 
 export function listBlueprintIconsByType(iconType: BlueprintIconType): BlueprintIconRecord[] {
   return (iconLibrary.icons as BlueprintIconRecord[]).filter((icon) => icon.iconType === iconType);
+}
+
+export function getBlueprintIconDisplayName(icon: BlueprintIconRecord, locale: string): string {
+  if (locale.toLowerCase().startsWith('zh') && icon.displayNameZhHans) return icon.displayNameZhHans;
+  return icon.name;
 }

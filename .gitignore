@@ -1,0 +1,20 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+out/
+release/
+.vite/
+
+# Runtime artifacts
+Reports/
+Backups/
+
+# Diagnostics (generated / large fixtures)
+diagnostics/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.log

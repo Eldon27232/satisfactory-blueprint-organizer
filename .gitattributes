@@ -1,0 +1,10 @@
+# Normalize line endings: store LF in repo, check out native on Windows
+* text=auto
+
+# Binary assets — never normalize
+*.png binary
+*.svg binary
+*.sav binary
+*.sbp binary
+*.sbpcfg binary
+*.ico binary

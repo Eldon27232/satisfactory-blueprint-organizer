@@ -1,0 +1,52 @@
+{
+  "name": "satisfactory-blueprint-classifier",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "out/main/electron.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "tsc --noEmit && electron-vite build",
+    "dist": "npm run build && electron-builder --win --dir",
+    "dist:nsis": "npm run build && electron-builder --win",
+    "test": "vitest run",
+    "dump-save": "tsx scripts/dump-save.ts",
+    "scan-blueprint-structure": "tsx scripts/scan-blueprint-structure.ts",
+    "diff-save-blueprint-category": "tsx scripts/diff-save-blueprint-category.ts"
+  },
+  "dependencies": {
+    "@etothepii/satisfactory-file-parser": "^4.1.1",
+    "@vitejs/plugin-react": "^5.0.0",
+    "electron-is-dev": "^3.0.1",
+    "lucide-react": "^0.468.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.1",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.8",
+    "electron-vite": "^2.3.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vite": "^5.4.11",
+    "vitest": "^2.1.6"
+  },
+  "build": {
+    "appId": "dev.local.satisfactory-blueprint-classifier",
+    "productName": "Satisfactory Blueprint Classifier",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "out/**",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis",
+      "signAndEditExecutable": false
+    }
+  }
+}

@@ -1,4 +1,4 @@
-import { app, dialog, ipcMain, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { listBackups } from '../core/backup';
@@ -6,7 +6,6 @@ import { scanBlueprintStructure } from '../core/blueprintCategoryDiscovery';
 import { buildDraftFromExternalMapping, buildDraftFromSave } from '../core/buildDraft';
 import { executeDraftImport, planDraftApply } from '../core/applyDraft';
 import { autoLocateSaveGames, listAccountDirsInRoot, listSaveGameLocations, listSavesInAccountDir, locateSaveCandidatesInAccountDir, resolveBlueprintDirForSave } from '../core/locateSaves';
-import { buildAppMenu, type MenuLanguage } from './menu';
 import { resolveSteamPersonaName } from '../core/steam';
 import { dumpSaveToDiagnostics } from '../core/parseSave';
 import { rollbackFromBackup } from '../core/rollback';
@@ -53,7 +52,36 @@ export function registerIpc(): void {
   });
 
   // --- Visual blueprint manager (draft) flow ---
-  ipcMain.handle('menu:setLanguage', async (_event, language: MenuLanguage) => buildAppMenu(language));
+  // mac-style window controls (custom traffic-light buttons in the renderer).
+  ipcMain.handle('window:minimize', (event) => BrowserWindow.fromWebContents(event.sender)?.minimize());
+  ipcMain.handle('window:toggleMaximize', (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (!win) return;
+    if (win.isMaximized()) win.unmaximize();
+    else win.maximize();
+  });
+  ipcMain.handle('window:close', (event) => BrowserWindow.fromWebContents(event.sender)?.close());
+
+  // Titlebar menu actions (webContents edit / view operations).
+  ipcMain.handle('web:undo', (event) => event.sender.undo());
+  ipcMain.handle('web:redo', (event) => event.sender.redo());
+  ipcMain.handle('web:cut', (event) => event.sender.cut());
+  ipcMain.handle('web:copy', (event) => event.sender.copy());
+  ipcMain.handle('web:paste', (event) => event.sender.paste());
+  ipcMain.handle('web:delete', (event) => event.sender.delete());
+  ipcMain.handle('web:selectAll', (event) => event.sender.selectAll());
+  ipcMain.handle('web:reload', (event) => event.sender.reload());
+  ipcMain.handle('web:forceReload', (event) => event.sender.reloadIgnoringCache());
+  ipcMain.handle('web:toggleDevtools', (event) => event.sender.toggleDevTools());
+  ipcMain.handle('web:actualSize', (event) => event.sender.setZoomLevel(0));
+  ipcMain.handle('web:zoomIn', (event) => event.sender.setZoomLevel(event.sender.getZoomLevel() + 0.5));
+  ipcMain.handle('web:zoomOut', (event) => event.sender.setZoomLevel(event.sender.getZoomLevel() - 0.5));
+  ipcMain.handle('web:toggleFullscreen', (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (win) win.setFullScreen(!win.isFullScreen());
+  });
+  ipcMain.handle('shell:openExternal', (_event, url: string) => shell.openExternal(url));
+
   ipcMain.handle('saves:autoLocate', async () => autoLocateSaveGames());
   ipcMain.handle('saves:locations', async () => listSaveGameLocations());
   ipcMain.handle('saves:accountsInRoot', async (_event, saveGamesRoot: string) => listAccountDirsInRoot(saveGamesRoot));

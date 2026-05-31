@@ -14,6 +14,84 @@ body {
   margin: 0;
 }
 
+.app-root {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.app-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+/* 自定义标题栏（主进程隐藏了原生标题栏）。左侧 mac 交通灯 + 居中标题，背景透明，与业务窗口无缝衔接。 */
+.window-titlebar {
+  display: flex;
+  align-items: center;
+  height: 30px;
+  flex-shrink: 0;
+  background: transparent;
+  -webkit-app-region: drag;
+  user-select: none;
+  position: relative;
+}
+
+.window-titlebar-content {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  font-size: 12px;
+  color: #51605f;
+}
+
+.window-titlebar-content.centered {
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  justify-content: center;
+  /* 居中标题层铺满整条标题栏，绝对定位会盖住圆点，禁用其指针事件以放行下层点击。 */
+  pointer-events: none;
+}
+
+.window-titlebar-controls.type-mac {
+  display: flex;
+  align-items: center;
+  padding-left: 0.675rem;
+}
+
+.window-titlebar-controls.type-mac .control {
+  width: 16px;
+  height: 16px;
+  background: #0e0e0e99;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 0.675rem;
+  color: transparent;
+  -webkit-app-region: no-drag;
+  opacity: 0.8;
+  cursor: pointer;
+}
+
+.window-titlebar-controls.type-mac .control:hover {
+  opacity: 1;
+}
+
+.window-titlebar-controls.type-mac .control.close {
+  background: #f46d60;
+}
+
+.window-titlebar-controls.type-mac .control.maximize {
+  background: #59ca56;
+}
+
+.window-titlebar-controls.type-mac .control.minimize {
+  background: #f9c04e;
+}
+
 button {
   display: inline-flex;
   align-items: center;
@@ -382,7 +460,8 @@ button.danger.ghost {
 /* ----- Manager shell: full-height three-pane workspace ----- */
 .manager-shell {
   max-width: none;
-  height: 100vh;
+  flex: 1;
+  min-height: 0;
   padding: 0;
   display: flex;
   flex-direction: column;

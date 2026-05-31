@@ -4,6 +4,7 @@ import type { DraftTree } from '../shared/draftModel';
 import type { BackupRecord, ImportReport, Notice, SaveCandidate, SaveGameLocation } from '../shared/types';
 import { detectLanguage, saveLanguage, translate, type Language } from './i18n';
 import { ManagerView } from './ManagerView';
+import { Titlebar } from './Titlebar';
 
 type View = 'setup' | 'manager';
 
@@ -36,7 +37,6 @@ export function App(): JSX.Element {
   const t = (key: Parameters<typeof translate>[1]): string => translate(language, key);
 
   useEffect(() => {
-    void window.sbc?.setMenuLanguage(language);
     void autoLocate();
     void refreshBackups();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -78,7 +78,6 @@ export function App(): JSX.Element {
   function changeLanguage(next: Language): void {
     setLanguage(next);
     saveLanguage(next);
-    void window.sbc?.setMenuLanguage(next);
   }
 
   async function runBusy(action: () => Promise<void>, successMessage?: string): Promise<void> {
@@ -297,24 +296,30 @@ export function App(): JSX.Element {
 
   if (view === 'manager' && draft) {
     return (
-      <main className="app-shell manager-shell">
-        <ManagerView
-          language={language}
-          draft={draft}
-          setDraft={setDraft}
-          busy={busy}
-          onBack={() => setView('setup')}
-          onApply={applyDraft}
-          onImportExternal={importExternalMapping}
-          fetchPlan={fetchPlan}
-        />
-        {status && statusKind === 'error' && <pre className="floating-status error">{status}</pre>}
-      </main>
+      <div className="app-root">
+        <Titlebar title={t('appTitle')} language={language} />
+        <main className="app-shell manager-shell">
+          <ManagerView
+            language={language}
+            draft={draft}
+            setDraft={setDraft}
+            busy={busy}
+            onBack={() => setView('setup')}
+            onApply={applyDraft}
+            onImportExternal={importExternalMapping}
+            fetchPlan={fetchPlan}
+          />
+          {status && statusKind === 'error' && <pre className="floating-status error">{status}</pre>}
+        </main>
+      </div>
     );
   }
 
   return (
-    <main className="app-shell">
+    <div className="app-root">
+      <Titlebar title={t('appTitle')} language={language} />
+      <div className="app-scroll">
+        <main className="app-shell">
       <header className="top-bar">
         <div>
           <h1>{t('appTitle')}</h1>
@@ -470,7 +475,9 @@ export function App(): JSX.Element {
           </div>
         </div>
       )}
-    </main>
+        </main>
+      </div>
+    </div>
   );
 }
 

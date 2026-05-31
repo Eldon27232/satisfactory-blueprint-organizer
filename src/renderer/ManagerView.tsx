@@ -124,9 +124,11 @@ export function ManagerView(props: ManagerViewProps): JSX.Element {
     setSelectedBlueprintIds((previous) => (previous.includes(blueprintId) ? previous.filter((id) => id !== blueprintId) : [...previous, blueprintId]));
   }
 
-  // Select every blueprint currently shown in the middle grid (current category/subcategory or search results).
-  function selectAllVisible(): void {
-    setSelectedBlueprintIds(visibleBlueprints.groups.flatMap((group) => group.blueprints.map((blueprint) => blueprint.id)));
+  // Select all blueprints currently shown in the grid; click again to clear the selection.
+  function toggleSelectAllVisible(): void {
+    const ids = visibleBlueprints.groups.flatMap((group) => group.blueprints.map((blueprint) => blueprint.id));
+    const allSelected = ids.length > 0 && ids.every((id) => selectedBlueprintIds.includes(id));
+    setSelectedBlueprintIds(allSelected ? [] : ids);
   }
 
   // ---- drag & drop ----
@@ -282,6 +284,8 @@ export function ManagerView(props: ManagerViewProps): JSX.Element {
   }
 
   const hasSelection = selectedBlueprintIds.length > 0;
+  const visibleBlueprintIds = visibleBlueprints.groups.flatMap((group) => group.blueprints.map((blueprint) => blueprint.id));
+  const allVisibleSelected = visibleBlueprintIds.length > 0 && visibleBlueprintIds.every((id) => selectedBlueprintIds.includes(id));
 
   return (
     <div className="manager">
@@ -301,10 +305,10 @@ export function ManagerView(props: ManagerViewProps): JSX.Element {
         <div className="manager-top-right">
           <span className={`pill ${errorCount ? 'error' : 'ok'}`}>{errorCount} {t('errors')}</span>
           <span className={`pill ${warningCount ? 'warning' : 'ok'}`}>{warningCount} {t('warnings')}</span>
+          <button className="secondary" disabled={visibleBlueprintIds.length === 0} onClick={toggleSelectAllVisible}>
+            <CheckSquare size={16} /> {allVisibleSelected ? t('deselectAll') : t('selectAll')}
+          </button>
           <div className="bp-toolbar">
-            <button className="icon-button" title={t('selectAll')} disabled={visibleBlueprints.groups.every((group) => group.blueprints.length === 0)} onClick={selectAllVisible}>
-              <CheckSquare size={16} />
-            </button>
             <button className="icon-button" title={t('opDelete')} disabled={!hasSelection} onClick={recycleSelected}>
               <Trash2 size={16} />
             </button>

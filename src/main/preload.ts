@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import type { DraftApplyOptions, DraftApplyPlan, DraftTree } from '../shared/draftModel';
-import type { AutoLocateResult, BackupRecord, BlueprintDirResolution, DryRunResult, ExecuteOptions, ImportReport, PlayerStateRepairReport, RollbackReport, SaveCandidate, SaveDiscoveryResult, SaveGameLocation, ScanReport, UpdateCheckResult, DroppedBlueprintImport } from '../shared/types';
+import type { AutoLocateResult, BackupRecord, BlueprintDirResolution, DryRunResult, ExecuteOptions, ImportReport, PlayerStateRepairReport, RollbackReport, SaveCandidate, SaveDiscoveryResult, SaveGameLocation, ScanReport, DroppedBlueprintImport } from '../shared/types';
 
 const api = {
   chooseGameBlueprintDirectory: (): Promise<string | null> => ipcRenderer.invoke('dialog:directory', 'gameBlueprintDir'),
@@ -53,8 +53,16 @@ const api = {
   scanMapping: (gameBlueprintDir: string, mappingDir: string): Promise<ScanReport> => ipcRenderer.invoke('mapping:scan', gameBlueprintDir, mappingDir),
   // Electron 32+ 移除了 File.path，改用 webUtils 在 preload 取拖入文件的真实路径。
   getPathForFile: (file: File): string => webUtils.getPathForFile(file),
-  checkForUpdate: (): Promise<UpdateCheckResult> => ipcRenderer.invoke('update:check'),
   openExternal: (url: string): Promise<void> => ipcRenderer.invoke('shell:openExternal', url),
+  updater: {
+    check: (): Promise<void> => ipcRenderer.invoke('updater:check'),
+    download: (): Promise<void> => ipcRenderer.invoke('updater:download'),
+    quitAndInstall: (): Promise<void> => ipcRenderer.invoke('updater:quitAndInstall'),
+    onAvailable: (cb: (info: { version: string; notes: string }) => void): void => { ipcRenderer.on('updater:available', (_event, info) => cb(info)); },
+    onProgress: (cb: (percent: number) => void): void => { ipcRenderer.on('updater:progress', (_event, percent) => cb(percent)); },
+    onDownloaded: (cb: (info: { version: string }) => void): void => { ipcRenderer.on('updater:downloaded', (_event, info) => cb(info)); },
+    onError: (cb: (message: string) => void): void => { ipcRenderer.on('updater:error', (_event, message) => cb(message)); }
+  },
   openPath: (targetPath: string): Promise<string> => ipcRenderer.invoke('shell:openPath', targetPath),
   dumpSave: (savePath: string): Promise<string> => ipcRenderer.invoke('diagnostics:dumpSave', savePath),
   scanBlueprintStructure: (savePath: string): Promise<string> => ipcRenderer.invoke('diagnostics:scanBlueprintStructure', savePath),

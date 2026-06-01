@@ -417,6 +417,24 @@ p {
   font-size: 12px;
 }
 
+.update-progress {
+  margin: 10px 0;
+}
+
+.update-progress-bar {
+  height: 8px;
+  border-radius: 4px;
+  background: #e1e6e3;
+  overflow: hidden;
+  margin-bottom: 6px;
+}
+
+.update-progress-bar > div {
+  height: 100%;
+  background: #287277;
+  transition: width 0.2s ease;
+}
+
 .update-notes {
   white-space: pre-wrap;
   word-break: break-word;

@@ -2,6 +2,7 @@ import { app, BrowserWindow, Menu } from 'electron';
 import path from 'node:path';
 import { registerIpc } from './ipc';
 import { resolveDataRoot } from './paths';
+import { registerUpdater } from './updater';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -53,6 +54,7 @@ app.whenReady().then(() => {
   registerIpc();
   Menu.setApplicationMenu(null);
   createWindow();
+  registerUpdater(() => mainWindow);
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });

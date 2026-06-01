@@ -125,31 +125,6 @@ export function registerIpc(): void {
     return shell.openPath(resolved);
   });
 
-  // 检查 GitHub 最新 release 是否比当前版本新（best-effort，离线/失败时静默返回无更新）。
-  ipcMain.handle('update:check', async () => {
-    const currentVersion = app.getVersion();
-    const empty = { currentVersion, latestVersion: null, hasUpdate: false, notes: '', url: '' };
-    try {
-      const res = await fetch('https://api.github.com/repos/Eldon27232/satisfactory-blueprint-organizer/releases/latest', {
-        headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'satisfactory-blueprint-organizer' },
-        signal: AbortSignal.timeout(8000)
-      });
-      if (!res.ok) return empty;
-      const data = (await res.json()) as { tag_name?: string; body?: string; html_url?: string };
-      const latest = String(data.tag_name ?? '').replace(/^v/i, '').trim();
-      if (!latest) return empty;
-      return {
-        currentVersion,
-        latestVersion: latest,
-        hasUpdate: isNewerVersion(latest, currentVersion),
-        notes: String(data.body ?? '').trim(),
-        url: String(data.html_url ?? '')
-      };
-    } catch {
-      return empty;
-    }
-  });
-
   ipcMain.handle('diagnostics:dumpSave', async (_event, savePath: string) => dumpSaveToDiagnostics(savePath));
   ipcMain.handle('diagnostics:scanBlueprintStructure', async (_event, savePath: string) => scanBlueprintStructure(savePath));
   ipcMain.handle('diagnostics:diffSaveBlueprintCategory', async (_event, beforePath: string, afterPath: string) => diffBlueprintCategorySaves(beforePath, afterPath));
@@ -179,16 +154,4 @@ async function readDialogCache(): Promise<Partial<Record<DialogCacheKey, string>
 
 function dialogCachePath(): string {
   return path.join(app.getPath('userData'), 'dialog-paths.json');
-}
-
-// 语义化版本比较：latest 是否严格高于 current（按 major.minor.patch 数值）。
-function isNewerVersion(latest: string, current: string): boolean {
-  const a = latest.split('.').map((n) => parseInt(n, 10) || 0);
-  const b = current.split('.').map((n) => parseInt(n, 10) || 0);
-  for (let i = 0; i < Math.max(a.length, b.length); i++) {
-    const x = a[i] ?? 0;
-    const y = b[i] ?? 0;
-    if (x !== y) return x > y;
-  }
-  return false;
 }

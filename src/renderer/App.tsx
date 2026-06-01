@@ -1,7 +1,7 @@
 import { AlertTriangle, ArchiveRestore, CheckCircle2, FolderOpen, RotateCcw, ShieldAlert, Trash2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type { DraftTree } from '../shared/draftModel';
-import type { BackupRecord, ImportReport, Notice, SaveCandidate, SaveGameLocation, UpdateCheckResult } from '../shared/types';
+import type { BackupRecord, ImportReport, Notice, SaveCandidate, SaveGameLocation } from '../shared/types';
 import { availableLanguages, detectLanguage, saveLanguage, translate, type Language } from './i18n';
 import { ManagerView } from './ManagerView';
 import { Titlebar } from './Titlebar';
@@ -34,7 +34,9 @@ export function App(): JSX.Element {
   const [importReport, setImportReport] = useState<ImportReport | null>(null);
   const [backups, setBackups] = useState<BackupRecord[]>([]);
   const [backupToDelete, setBackupToDelete] = useState<BackupRecord | null>(null);
-  const [update, setUpdate] = useState<UpdateCheckResult | null>(null);
+  const [updateInfo, setUpdateInfo] = useState<{ version: string; notes: string } | null>(null);
+  const [updatePhase, setUpdatePhase] = useState<'available' | 'downloading' | 'downloaded'>('available');
+  const [updatePercent, setUpdatePercent] = useState(0);
   const [mappingDiffState, setMappingDiffState] = useState<{ mappingDir: string; diff: MappingDiff } | null>(null);
   const [setupWarning, setSetupWarning] = useState(false);
 
@@ -43,9 +45,13 @@ export function App(): JSX.Element {
   useEffect(() => {
     void autoLocate();
     void refreshBackups();
-    void window.sbc?.checkForUpdate().then((result) => {
-      if (result?.hasUpdate) setUpdate(result);
-    });
+    const updater = window.sbc?.updater;
+    if (updater) {
+      updater.onAvailable((info) => { setUpdateInfo(info); setUpdatePhase('available'); });
+      updater.onProgress((percent) => setUpdatePercent(percent));
+      updater.onDownloaded((info) => { setUpdateInfo((previous) => previous ?? { version: info.version, notes: '' }); setUpdatePhase('downloaded'); });
+      void updater.check();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -550,28 +556,39 @@ export function App(): JSX.Element {
         </div>
       )}
 
-      {update && update.latestVersion && (
-        <div className="modal-backdrop" onClick={() => setUpdate(null)}>
+      {updateInfo && (
+        <div className="modal-backdrop" onClick={updatePhase === 'downloading' ? undefined : () => setUpdateInfo(null)}>
           <div className="modal small-confirm" onClick={(event) => event.stopPropagation()}>
             <header className="modal-head">
               <h2>{t('updateAvailableTitle')}</h2>
             </header>
             <div className="confirm-body">
-              <p>{t('updateNewVersion').replace('{v}', update.latestVersion).replace('{c}', update.currentVersion)}</p>
-              {update.notes && (
+              <p>{t('updateNewVersion').replace('{v}', updateInfo.version)}</p>
+              {updatePhase === 'available' && updateInfo.notes && (
                 <>
                   <strong>{t('updateNotesLabel')}</strong>
-                  <pre className="update-notes">{update.notes}</pre>
+                  <pre className="update-notes">{updateInfo.notes}</pre>
                 </>
               )}
+              {updatePhase === 'downloading' && (
+                <div className="update-progress">
+                  <div className="update-progress-bar">
+                    <div style={{ width: `${updatePercent}%` }} />
+                  </div>
+                  <small className="muted">{t('updateDownloading')} {updatePercent}%</small>
+                </div>
+              )}
+              {updatePhase === 'downloaded' && <p className="muted">{t('updateDownloaded')}</p>}
             </div>
             <footer className="confirm-actions" style={{ padding: '14px 18px' }}>
-              <button className="secondary" onClick={() => setUpdate(null)}>
-                {t('updateLater')}
-              </button>
-              <button className="primary" onClick={() => { void window.sbc?.openExternal(update.url); setUpdate(null); }}>
-                {t('updateNow')}
-              </button>
+              {updatePhase === 'available' && (
+                <>
+                  <button className="secondary" onClick={() => setUpdateInfo(null)}>{t('updateLater')}</button>
+                  <button className="primary" onClick={() => { setUpdatePhase('downloading'); setUpdatePercent(0); void window.sbc?.updater.download(); }}>{t('updateNow')}</button>
+                </>
+              )}
+              {updatePhase === 'downloading' && <button className="secondary" disabled>{t('updateDownloading')}</button>}
+              {updatePhase === 'downloaded' && <button className="primary" onClick={() => void window.sbc?.updater.quitAndInstall()}>{t('updateRestart')}</button>}
             </footer>
           </div>
         </div>

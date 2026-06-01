@@ -261,7 +261,9 @@ p {
 .path-picker-row .path-picker {
   flex: 1;
   min-width: 0;
-  grid-template-columns: 90px minmax(0, 1fr);
+  gap: 8px;
+  /* 标签列按文字宽自适应，下拉紧挨标签（不再留固定列宽的空白）。 */
+  grid-template-columns: auto minmax(0, 1fr);
 }
 
 /* 备份面板 */

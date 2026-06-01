@@ -3,6 +3,7 @@ import { existsSync, promises as fs } from 'node:fs';
 import path from 'node:path';
 import { deleteBackup, listBackups } from '../core/backup';
 import { importDroppedBlueprintFiles } from '../core/droppedBlueprints';
+import { importZipBlueprints } from '../core/zipImport';
 import { readDirtyFlag, writeDirtyFlag } from '../core/dirtyFlag';
 import { scanMappingFolder } from '../core/scanMapping';
 import { scanBlueprintStructure } from '../core/blueprintCategoryDiscovery';
@@ -112,6 +113,15 @@ export function registerIpc(): void {
   ipcMain.handle('backup:rollback', async (_event, backupDir: string) => rollbackFromBackup(backupDir));
   ipcMain.handle('backup:delete', async (_event, backupDir: string) => deleteBackup(backupDir));
   ipcMain.handle('blueprints:importDropped', async (_event, paths: string[]) => importDroppedBlueprintFiles(paths));
+  ipcMain.handle('blueprints:importZip', async (_event, zipPaths: string[]) => importZipBlueprints(zipPaths));
+  ipcMain.handle('dialog:zipFiles', async () => {
+    const result = await dialog.showOpenDialog({
+      properties: ['openFile', 'multiSelections'],
+      filters: [{ name: 'Zip', extensions: ['zip'] }]
+    });
+    if (result.canceled) return [];
+    return result.filePaths;
+  });
   ipcMain.handle('dirty:read', async (_event, savePath: string) => readDirtyFlag(savePath));
   ipcMain.handle('dirty:write', async (_event, savePath: string, dirty: boolean) => writeDirtyFlag(savePath, dirty));
   ipcMain.handle('mapping:scan', async (_event, gameBlueprintDir: string, mappingDir: string) => scanMappingFolder({ gameBlueprintDir, mappingDir }));

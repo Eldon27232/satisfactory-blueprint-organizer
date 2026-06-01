@@ -144,6 +144,7 @@
   "diffApplyMerge": "确认合并",
   "diffNothing": "外部映射与当前管理没有差异。",
   "importExternal": "导入外部映射",
+  "importZip": "导入压缩包",
   "selectToggle": "选中/取消选中",
   "selectAll": "全选",
   "deselectAll": "取消全选",

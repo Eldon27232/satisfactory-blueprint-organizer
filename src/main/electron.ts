@@ -1,6 +1,7 @@
 import { app, BrowserWindow, Menu } from 'electron';
 import path from 'node:path';
 import { registerIpc } from './ipc';
+import { cleanImportStaging } from '../core/importStaging';
 import { resolveDataRoot } from './paths';
 import { registerUpdater } from './updater';
 
@@ -51,6 +52,8 @@ app.whenReady().then(() => {
   } catch {
     // ignore: 退回默认工作目录
   }
+  // 清理上次会话遗留的导入暂存（草稿不跨会话持久化，遗留副本必为孤儿）。
+  void cleanImportStaging();
   registerIpc();
   Menu.setApplicationMenu(null);
   createWindow();

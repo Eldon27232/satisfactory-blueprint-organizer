@@ -144,6 +144,7 @@
   "diffApplyMerge": "Merge",
   "diffNothing": "No differences between the external folder and the manager.",
   "importExternal": "Import external mapping",
+  "importZip": "Import zip",
   "selectToggle": "Toggle selection",
   "selectAll": "Select all",
   "deselectAll": "Deselect all",

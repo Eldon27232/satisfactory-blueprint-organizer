@@ -1,4 +1,4 @@
-import { AlertTriangle, CheckSquare, ChevronDown, ChevronRight, ClipboardPaste, Copy, FolderInput, FolderPlus, ImageIcon, Layers, Minus, Plus, Scissors, Trash2 } from 'lucide-react';
+import { AlertTriangle, CheckSquare, ChevronDown, ChevronRight, ClipboardPaste, Copy, FileArchive, FolderInput, FolderPlus, ImageIcon, Layers, Minus, Plus, Scissors, Trash2 } from 'lucide-react';
 import { useMemo, useRef, useState } from 'react';
 import { getBlueprintIconById, getBlueprintIconDisplayName } from '../shared/blueprintIcons';
 import {
@@ -14,6 +14,7 @@ import {
   isRecycleCategory,
   locateBlueprint,
   makeId,
+  mergeImportedBlueprints,
   moveBlueprints,
   nextAvailableStem,
   recycleBlueprints,
@@ -139,7 +140,8 @@ export function ManagerView(props: ManagerViewProps): JSX.Element {
     setSelectedBlueprintIds(allSelected ? [] : ids);
   }
 
-  // 从系统拖入 .sbp/.sbpcfg 文件到当前选中的子分类；成对校验，缺一不导入并计入 error。
+  // 从系统拖入文件：.zip 走压缩包导入（按内部结构建分类/子分类），.sbp/.sbpcfg 走散文件导入
+  // （进当前选中的子分类）。两者可同时拖入。
   async function onDropFiles(event: React.DragEvent<HTMLElement>): Promise<void> {
     if (event.dataTransfer.files.length === 0) return; // 内部拖拽（移动蓝图）不在此处理
     event.preventDefault();
@@ -147,6 +149,17 @@ export function ManagerView(props: ManagerViewProps): JSX.Element {
       .map((file) => window.sbc?.getPathForFile(file))
       .filter((value): value is string => Boolean(value));
     if (paths.length === 0) return;
+    const zipPaths = paths.filter((p) => p.toLowerCase().endsWith('.zip'));
+    const looseFiles = paths.filter((p) => {
+      const lower = p.toLowerCase();
+      return lower.endsWith('.sbp') || lower.endsWith('.sbpcfg');
+    });
+    if (zipPaths.length > 0) await importZipFromPaths(zipPaths);
+    if (looseFiles.length > 0) await importLooseFiles(looseFiles);
+  }
+
+  // .sbp/.sbpcfg 散文件导入：必须先选中一个子分类；成对校验，缺一不导入并计入 error。
+  async function importLooseFiles(paths: string[]): Promise<void> {
     if (selection?.type !== 'subcategory') {
       setImportNotices([{ severity: 'error', code: 'NO_SUBCATEGORY', message: '请先在左侧选择一个子分类，再把蓝图文件拖进来。' }]);
       setShowNotices(true);
@@ -175,10 +188,42 @@ export function ManagerView(props: ManagerViewProps): JSX.Element {
           warnings: []
         };
       });
-      setDraft(addBlueprints(draft, additions, targetSubId));
+      update(addBlueprints(draft, additions, targetSubId));
     }
     setImportNotices(result.errors);
     if (result.errors.length > 0) setShowNotices(true);
+  }
+
+  // 压缩包导入：解压（主进程）→ 按内部文件夹深度映射分类/子分类 → 并入当前草稿。
+  async function importZipFromPaths(zipPaths: string[]): Promise<void> {
+    const sbc = window.sbc;
+    if (!sbc) return;
+    const result = await sbc.importZipBlueprints(zipPaths);
+    if (result.entries.length > 0) {
+      update(
+        mergeImportedBlueprints(
+          draft,
+          result.entries.map((entry) => ({
+            category: entry.category,
+            subcategory: entry.subcategory,
+            stem: entry.stem,
+            sourceSbpPath: entry.sbpPath,
+            sourceCfgPath: entry.cfgPath,
+            iconId: entry.iconId
+          }))
+        )
+      );
+    }
+    setImportNotices(result.notices);
+    if (result.notices.length > 0) setShowNotices(true);
+  }
+
+  // 点击“导入压缩包”按钮：选 zip → 导入。
+  async function onClickImportZip(): Promise<void> {
+    const sbc = window.sbc;
+    if (!sbc) return;
+    const zipPaths = await sbc.chooseZipFiles();
+    if (zipPaths.length > 0) await importZipFromPaths(zipPaths);
   }
 
   // ---- drag & drop ----
@@ -346,6 +391,9 @@ export function ManagerView(props: ManagerViewProps): JSX.Element {
           </button>
           <button className="secondary" onClick={props.onImportExternal} disabled={props.busy}>
             <FolderInput size={16} /> {t('importExternal')}
+          </button>
+          <button className="secondary" onClick={() => void onClickImportZip()} disabled={props.busy}>
+            <FileArchive size={16} /> {t('importZip')}
           </button>
           <div className="manager-session">
             <strong>{draft.sessionName ?? '-'}</strong>

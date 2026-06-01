@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import type { DraftApplyOptions, DraftApplyPlan, DraftTree } from '../shared/draftModel';
-import type { AutoLocateResult, BackupRecord, BlueprintDirResolution, DryRunResult, ExecuteOptions, ImportReport, PlayerStateRepairReport, RollbackReport, SaveCandidate, SaveDiscoveryResult, SaveGameLocation, ScanReport, DroppedBlueprintImport } from '../shared/types';
+import type { AutoLocateResult, BackupRecord, BlueprintDirResolution, DryRunResult, ExecuteOptions, ImportReport, PlayerStateRepairReport, RollbackReport, SaveCandidate, SaveDiscoveryResult, SaveGameLocation, ScanReport, DroppedBlueprintImport, ZipImportResult } from '../shared/types';
 
 const api = {
   chooseGameBlueprintDirectory: (): Promise<string | null> => ipcRenderer.invoke('dialog:directory', 'gameBlueprintDir'),
@@ -48,6 +48,8 @@ const api = {
   rollback: (backupDir: string): Promise<RollbackReport> => ipcRenderer.invoke('backup:rollback', backupDir),
   deleteBackup: (backupDir: string): Promise<void> => ipcRenderer.invoke('backup:delete', backupDir),
   importDroppedBlueprints: (paths: string[]): Promise<DroppedBlueprintImport> => ipcRenderer.invoke('blueprints:importDropped', paths),
+  importZipBlueprints: (zipPaths: string[]): Promise<ZipImportResult> => ipcRenderer.invoke('blueprints:importZip', zipPaths),
+  chooseZipFiles: (): Promise<string[]> => ipcRenderer.invoke('dialog:zipFiles'),
   readDirtyFlag: (savePath: string): Promise<boolean> => ipcRenderer.invoke('dirty:read', savePath),
   writeDirtyFlag: (savePath: string, dirty: boolean): Promise<void> => ipcRenderer.invoke('dirty:write', savePath, dirty),
   scanMapping: (gameBlueprintDir: string, mappingDir: string): Promise<ScanReport> => ipcRenderer.invoke('mapping:scan', gameBlueprintDir, mappingDir),

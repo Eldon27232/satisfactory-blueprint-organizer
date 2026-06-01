@@ -202,6 +202,22 @@ export interface DroppedBlueprintImport {
   errors: Notice[];
 }
 
+// 从压缩包解压并暂存后的一个蓝图：sbpPath/cfgPath 指向暂存副本，category/subcategory 由
+// 压缩包内文件夹深度决定（见 zipImport.mapZipPathToCategory）。
+export interface ZipBlueprintEntry {
+  category: string;
+  subcategory: string;
+  stem: string;
+  sbpPath: string;
+  cfgPath: string;
+  iconId: number | null;
+}
+
+export interface ZipImportResult {
+  entries: ZipBlueprintEntry[];
+  notices: Notice[];
+}
+
 export interface PlayerStateRepairReport {
   backupDir: string;
   selectedSavePath: string;

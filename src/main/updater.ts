@@ -8,6 +8,9 @@ const { autoUpdater } = electronUpdater;
 export function registerUpdater(getWindow: () => BrowserWindow | null): void {
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = false;
+  // 关闭差量下载：默认的 blockmap 差量会对 GitHub CDN 发起大量 HTTP Range 小请求，跨境高延迟
+  // 下叠加每个请求的往返延迟，可慢到几分钟。整包一次性下载（与浏览器一致）反而快得多。
+  autoUpdater.disableDifferentialDownload = true;
 
   const send = (channel: string, payload?: unknown): void => {
     getWindow()?.webContents.send(channel, payload);

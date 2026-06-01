@@ -46,6 +46,7 @@ const api = {
   applyDraft: (options: DraftApplyOptions): Promise<ImportReport> => ipcRenderer.invoke('draft:apply', options),
   listBackups: (): Promise<BackupRecord[]> => ipcRenderer.invoke('backup:list'),
   rollback: (backupDir: string): Promise<RollbackReport> => ipcRenderer.invoke('backup:rollback', backupDir),
+  deleteBackup: (backupDir: string): Promise<void> => ipcRenderer.invoke('backup:delete', backupDir),
   openPath: (targetPath: string): Promise<string> => ipcRenderer.invoke('shell:openPath', targetPath),
   dumpSave: (savePath: string): Promise<string> => ipcRenderer.invoke('diagnostics:dumpSave', savePath),
   scanBlueprintStructure: (savePath: string): Promise<string> => ipcRenderer.invoke('diagnostics:scanBlueprintStructure', savePath),

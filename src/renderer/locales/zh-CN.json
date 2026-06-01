@@ -102,6 +102,8 @@
   "verifyFailed": "重读存档验证失败",
   "openReport": "打开报告",
   "backupsRollback": "备份 / 回滚",
+  "deleteBackupTitle": "删除备份",
+  "deleteBackupMessage": "确定删除备份「{id}」？删除后无法恢复。",
   "openBackups": "打开备份目录",
   "rollback": "回滚",
   "rollbackCompleted": "回滚完成。",

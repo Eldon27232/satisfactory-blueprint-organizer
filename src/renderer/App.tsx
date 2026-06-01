@@ -1,4 +1,4 @@
-import { AlertTriangle, ArchiveRestore, CheckCircle2, FolderOpen, RotateCcw, ShieldAlert } from 'lucide-react';
+import { AlertTriangle, ArchiveRestore, CheckCircle2, FolderOpen, RotateCcw, ShieldAlert, Trash2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type { DraftTree } from '../shared/draftModel';
 import type { BackupRecord, ImportReport, Notice, SaveCandidate, SaveGameLocation } from '../shared/types';
@@ -31,7 +31,7 @@ export function App(): JSX.Element {
   const [statusKind, setStatusKind] = useState<'info' | 'error'>('info');
   const [importReport, setImportReport] = useState<ImportReport | null>(null);
   const [backups, setBackups] = useState<BackupRecord[]>([]);
-  const [selectedBackupPath, setSelectedBackupPath] = useState<string>('');
+  const [backupToDelete, setBackupToDelete] = useState<BackupRecord | null>(null);
   const [setupWarning, setSetupWarning] = useState(false);
 
   const t = (key: Parameters<typeof translate>[1]): string => translate(language, key);
@@ -284,6 +284,17 @@ export function App(): JSX.Element {
     }, t('rollbackCompleted'));
   }
 
+  async function confirmDeleteBackup(): Promise<void> {
+    const sbc = api();
+    const target = backupToDelete;
+    if (!sbc || !target) return;
+    setBackupToDelete(null);
+    await runBusy(async () => {
+      await sbc.deleteBackup(target.path);
+      await refreshBackups();
+    });
+  }
+
   async function repairPlayerState(): Promise<void> {
     const sbc = api();
     if (!sbc || !selectedSavePath || !gameBlueprintDir) return;
@@ -344,6 +355,7 @@ export function App(): JSX.Element {
       <section className="panel paths-panel">
         <h2>{t('selectSaveTitle')}</h2>
 
+        <div className="path-picker-row">
         <label className="path-picker">
           <span>{t('userName')}</span>
           <select
@@ -375,6 +387,7 @@ export function App(): JSX.Element {
             ))}
           </select>
         </label>
+        </div>
 
         <label className="path-picker">
           <span>{t('save')}</span>
@@ -423,7 +436,7 @@ export function App(): JSX.Element {
       <section className="grid two">
         <div className="panel">
           <h2>{t('backupsRollback')}</h2>
-          <div className="actions-row wrap">
+          <div className="actions-row wrap backups-actions">
             <button className="secondary" onClick={() => window.sbc?.openPath('Backups')}>
               <FolderOpen size={16} /> {t('openBackups')}
             </button>
@@ -434,18 +447,24 @@ export function App(): JSX.Element {
               <FolderOpen size={16} /> {t('openReport')}
             </button>
           </div>
-          <div className="actions-row">
-            <select className="backup-select" value={selectedBackupPath} onChange={(event) => setSelectedBackupPath(event.target.value)} disabled={busy || backups.length === 0}>
-              <option value="">{backups.length === 0 ? t('noBackups') : t('selectBackup')}</option>
-              {backups.map((backup) => (
-                <option key={backup.path} value={backup.path}>
-                  {backup.id}
-                </option>
-              ))}
-            </select>
-            <button className="secondary" disabled={busy || !selectedBackupPath} onClick={() => selectedBackupPath && rollback(selectedBackupPath)}>
-              <ArchiveRestore size={16} /> {t('rollback')}
-            </button>
+          <div className="backup-list">
+            {backups.length === 0 ? (
+              <div className="muted backup-empty">{t('noBackups')}</div>
+            ) : (
+              backups.map((backup) => (
+                <div className="backup-row" key={backup.path}>
+                  <span className="backup-id" title={backup.path}>{backup.id}</span>
+                  <div className="backup-row-actions">
+                    <button className="secondary" disabled={busy} onClick={() => rollback(backup.path)}>
+                      <ArchiveRestore size={14} /> {t('rollback')}
+                    </button>
+                    <button className="icon-button danger" disabled={busy} title={t('delete')} onClick={() => setBackupToDelete(backup)}>
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </div>
 
@@ -473,6 +492,27 @@ export function App(): JSX.Element {
             <footer className="confirm-actions" style={{ padding: '14px 18px' }}>
               <button className="primary" onClick={() => setSetupWarning(false)}>
                 {t('gotIt')}
+              </button>
+            </footer>
+          </div>
+        </div>
+      )}
+
+      {backupToDelete && (
+        <div className="modal-backdrop" onClick={() => setBackupToDelete(null)}>
+          <div className="modal small-confirm" onClick={(event) => event.stopPropagation()}>
+            <header className="modal-head">
+              <h2>{t('deleteBackupTitle')}</h2>
+            </header>
+            <div className="confirm-body">
+              <p>{t('deleteBackupMessage').replace('{id}', backupToDelete.id)}</p>
+            </div>
+            <footer className="confirm-actions" style={{ padding: '14px 18px' }}>
+              <button className="secondary" onClick={() => setBackupToDelete(null)}>
+                {t('cancel')}
+              </button>
+              <button className="danger" onClick={() => void confirmDeleteBackup()}>
+                {t('delete')}
               </button>
             </footer>
           </div>

@@ -102,6 +102,8 @@
   "verifyFailed": "Reread verification failed",
   "openReport": "Open report",
   "backupsRollback": "Backups / rollback",
+  "deleteBackupTitle": "Delete backup",
+  "deleteBackupMessage": "Delete backup \"{id}\"? This cannot be undone.",
   "openBackups": "Open backups",
   "rollback": "Rollback",
   "rollbackCompleted": "Rollback completed.",

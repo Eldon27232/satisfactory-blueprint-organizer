@@ -252,9 +252,76 @@ p {
   min-height: auto;
 }
 
-.backup-select {
+/* 首页：用户名 / 游戏名同一行两列 */
+.path-picker-row {
+  display: flex;
+  gap: 16px;
+}
+
+.path-picker-row .path-picker {
   flex: 1;
-  min-height: 34px;
+  min-width: 0;
+  grid-template-columns: 90px minmax(0, 1fr);
+}
+
+/* 备份面板 */
+.backups-actions {
+  margin-top: 12px;
+}
+
+.backup-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 12px;
+  max-height: 240px;
+  overflow: auto;
+}
+
+.backup-empty {
+  font-size: 13px;
+}
+
+.backup-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 8px;
+  border: 1px solid #e1e6e3;
+  border-radius: 6px;
+  background: #fbfcfb;
+}
+
+.backup-id {
+  font-size: 12px;
+  font-weight: 600;
+  color: #333c3f;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.backup-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.backup-row-actions .secondary {
+  min-height: 28px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.icon-button.danger {
+  color: #b84b38;
+  background: transparent;
+}
+
+.icon-button.danger:hover {
+  background: #fbe9e5;
 }
 
 .grid.two {

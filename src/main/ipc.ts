@@ -1,7 +1,7 @@
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
-import { promises as fs } from 'node:fs';
+import { existsSync, promises as fs } from 'node:fs';
 import path from 'node:path';
-import { listBackups } from '../core/backup';
+import { deleteBackup, listBackups } from '../core/backup';
 import { scanBlueprintStructure } from '../core/blueprintCategoryDiscovery';
 import { buildDraftFromExternalMapping, buildDraftFromSave } from '../core/buildDraft';
 import { executeDraftImport, planDraftApply } from '../core/applyDraft';
@@ -107,9 +107,15 @@ export function registerIpc(): void {
   ipcMain.handle('backup:list', async () => listBackups());
 
   ipcMain.handle('backup:rollback', async (_event, backupDir: string) => rollbackFromBackup(backupDir));
+  ipcMain.handle('backup:delete', async (_event, backupDir: string) => deleteBackup(backupDir));
 
   ipcMain.handle('shell:openPath', async (_event, targetPath: string) => {
-    return shell.openPath(path.resolve(targetPath));
+    const resolved = path.resolve(targetPath);
+    // 目录类路径（无扩展名）若尚未创建则先建好，避免「找不到文件」报错。
+    if (!existsSync(resolved) && !path.extname(resolved)) {
+      await fs.mkdir(resolved, { recursive: true });
+    }
+    return shell.openPath(resolved);
   });
 
   ipcMain.handle('diagnostics:dumpSave', async (_event, savePath: string) => dumpSaveToDiagnostics(savePath));

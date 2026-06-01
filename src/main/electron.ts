@@ -1,8 +1,15 @@
 import { app, BrowserWindow, Menu } from 'electron';
 import path from 'node:path';
 import { registerIpc } from './ipc';
+import { resolveDataRoot } from './paths';
 
 let mainWindow: BrowserWindow | null = null;
+
+// 运行时窗口/任务栏图标。打包后图标作为 extraResources 放在 resources/icon.ico；
+// 开发时指向项目 build/icon.ico（__dirname 为 out/main）。
+function appIconPath(): string {
+  return app.isPackaged ? path.join(process.resourcesPath, 'icon.ico') : path.join(__dirname, '../../build/icon.ico');
+}
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -15,6 +22,7 @@ function createWindow(): void {
     // renderer has painted its first frame, and match the page background color.
     show: false,
     backgroundColor: '#f5f6f1',
+    icon: appIconPath(),
     // mac-style: hide the native title bar; the renderer draws its own traffic-light bar.
     titleBarStyle: 'hidden',
     webPreferences: {
@@ -34,6 +42,12 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
+  // 把工作目录切到数据根，使 Backups/Reports/diagnostics 等相对路径统一落在这里。
+  try {
+    process.chdir(resolveDataRoot());
+  } catch {
+    // ignore: 退回默认工作目录
+  }
   registerIpc();
   Menu.setApplicationMenu(null);
   createWindow();

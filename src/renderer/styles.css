@@ -210,9 +210,9 @@ p {
 
 .path-picker {
   display: grid;
-  grid-template-columns: 160px minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   font-weight: 600;
 }
 

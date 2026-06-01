@@ -42,6 +42,8 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
+  // Windows 据此关联任务栏图标/通知与应用身份；不设会让任务栏回退到默认图标。
+  if (process.platform === 'win32') app.setAppUserModelId('dev.local.satisfactory-blueprint-organizer');
   // 把工作目录切到数据根，使 Backups/Reports/diagnostics 等相对路径统一落在这里。
   try {
     process.chdir(resolveDataRoot());

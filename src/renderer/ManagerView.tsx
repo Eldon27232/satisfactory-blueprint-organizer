@@ -140,7 +140,7 @@ export function ManagerView(props: ManagerViewProps): JSX.Element {
     if (event.dataTransfer.files.length === 0) return; // 内部拖拽（移动蓝图）不在此处理
     event.preventDefault();
     const paths = Array.from(event.dataTransfer.files)
-      .map((file) => (file as File & { path?: string }).path)
+      .map((file) => window.sbc?.getPathForFile(file))
       .filter((value): value is string => Boolean(value));
     if (paths.length === 0) return;
     if (selection?.type !== 'subcategory') {

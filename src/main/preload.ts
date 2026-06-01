@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import type { DraftApplyOptions, DraftApplyPlan, DraftTree } from '../shared/draftModel';
 import type { AutoLocateResult, BackupRecord, BlueprintDirResolution, DryRunResult, ExecuteOptions, ImportReport, PlayerStateRepairReport, RollbackReport, SaveCandidate, SaveDiscoveryResult, SaveGameLocation, UpdateCheckResult, DroppedBlueprintImport } from '../shared/types';
 
@@ -48,6 +48,8 @@ const api = {
   rollback: (backupDir: string): Promise<RollbackReport> => ipcRenderer.invoke('backup:rollback', backupDir),
   deleteBackup: (backupDir: string): Promise<void> => ipcRenderer.invoke('backup:delete', backupDir),
   importDroppedBlueprints: (paths: string[]): Promise<DroppedBlueprintImport> => ipcRenderer.invoke('blueprints:importDropped', paths),
+  // Electron 32+ 移除了 File.path，改用 webUtils 在 preload 取拖入文件的真实路径。
+  getPathForFile: (file: File): string => webUtils.getPathForFile(file),
   checkForUpdate: (): Promise<UpdateCheckResult> => ipcRenderer.invoke('update:check'),
   openExternal: (url: string): Promise<void> => ipcRenderer.invoke('shell:openExternal', url),
   openPath: (targetPath: string): Promise<string> => ipcRenderer.invoke('shell:openPath', targetPath),

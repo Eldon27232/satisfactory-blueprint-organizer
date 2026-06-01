@@ -21,7 +21,7 @@ import {
 } from '../src/shared/draftModel';
 
 function blueprint(id: string, stem: string, origin: DraftBlueprint['origin'] = 'gameDir'): DraftBlueprint {
-  return { id, stem, originalStem: stem, origin, sourceSbpPath: origin === 'external' ? `C:/ext/${stem}.sbp` : null, sourceCfgPath: null, hasSbp: origin !== 'save', hasCfg: false, iconId: null, warnings: [] };
+  return { id, stem, originalStem: stem, origin, sourceSbpPath: origin === 'external' ? `C:/ext/${stem}.sbp` : null, sourceCfgPath: null, hasSbp: origin !== 'save', hasCfg: false, iconId: null, originalIconId: null, warnings: [] };
 }
 
 function sampleTree(): DraftTree {

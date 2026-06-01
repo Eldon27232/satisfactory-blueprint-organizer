@@ -14,6 +14,7 @@ import type { ImportReport, Notice } from '../shared/types';
 import { applyCategoryPlanToSave, verifyCategoryPlan } from './applyBlueprintCategories';
 import { createBackup } from './backup';
 import { discoverBlueprintCategoryCapability } from './blueprintCategoryDiscovery';
+import { writeBlueprintIconId } from './blueprintConfig';
 import { ensureDir, pathExists } from './fsUtils';
 import { parseSaveFile, writeSaveFile } from './parseSave';
 import { writeImportReport } from './reports';
@@ -46,6 +47,8 @@ interface ResolvedFileOps {
   /** Blueprint names to strip from the save's categories (recycled blueprints). */
   removedStems: string[];
   saveOnly: string[];
+  /** .sbpcfg files whose iconID must be rewritten (icon changed in the manager). */
+  iconWrites: Array<{ cfgPath: string; iconId: number }>;
   notices: Notice[];
 }
 
@@ -62,6 +65,7 @@ async function resolveFileOps(draft: DraftTree): Promise<ResolvedFileOps> {
   const deletions: ResolvedDeletion[] = [];
   const removedStems: string[] = [];
   const saveOnly: string[] = [];
+  const iconWrites: Array<{ cfgPath: string; iconId: number }> = [];
   const notices: Notice[] = [];
   const gameDir = draft.gameBlueprintDir;
   const recycledIds = getRecycledBlueprintIdSet(draft);
@@ -106,7 +110,15 @@ async function resolveFileOps(draft: DraftTree): Promise<ResolvedFileOps> {
     }
   }
 
-  return { copies, renames, deletions, removedStems, saveOnly, notices };
+  // Icon edits: any kept blueprint whose icon changed and has a .sbpcfg ending up in the game dir.
+  for (const blueprint of Object.values(draft.blueprints)) {
+    if (recycledIds.has(blueprint.id)) continue;
+    if (!blueprint.hasSbp || !blueprint.hasCfg) continue;
+    if (blueprint.iconId === null || blueprint.iconId === blueprint.originalIconId) continue;
+    iconWrites.push({ cfgPath: gamePath(gameDir, blueprint.stem, BLUEPRINT_CONFIG_EXT), iconId: blueprint.iconId });
+  }
+
+  return { copies, renames, deletions, removedStems, saveOnly, iconWrites, notices };
 }
 
 /** Build the confirm-page preview for a draft. */
@@ -220,6 +232,13 @@ export async function executeDraftImport(options: DraftApplyOptions): Promise<Im
       }
     } finally {
       await fs.rm(staging, { recursive: true, force: true });
+    }
+  }
+
+  // Blueprint icon edits: rewrite each changed .sbpcfg's iconID (files are now at their final paths).
+  for (const write of ops.iconWrites) {
+    if (await pathExists(write.cfgPath)) {
+      await writeBlueprintIconId(write.cfgPath, write.iconId);
     }
   }
 

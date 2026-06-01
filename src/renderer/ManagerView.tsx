@@ -23,6 +23,7 @@ import {
   renameSubcategory,
   reorderCategory,
   reorderSubcategory,
+  setBlueprintIcon,
   setCategoryIcon,
   validateDraft,
   type DraftApplyPlan,
@@ -60,6 +61,7 @@ export function ManagerView(props: ManagerViewProps): JSX.Element {
   const [search, setSearch] = useState('');
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set(draft.categories.map((category) => category.id)));
   const [iconPickerCategoryId, setIconPickerCategoryId] = useState<string | null>(null);
+  const [iconPickerBlueprintId, setIconPickerBlueprintId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState('');
   const [pendingDelete, setPendingDelete] = useState<{ id: string; name: string; count: number } | null>(null);
   const [confirmPlan, setConfirmPlan] = useState<DraftApplyPlan | null>(null);
@@ -167,6 +169,7 @@ export function ManagerView(props: ManagerViewProps): JSX.Element {
           hasSbp: true,
           hasCfg: true,
           iconId: item.iconId,
+          originalIconId: item.iconId,
           warnings: []
         };
       });
@@ -487,6 +490,7 @@ export function ManagerView(props: ManagerViewProps): JSX.Element {
               onDeleteSubcategory={requestDeleteSubcategory}
               onOpenIconPicker={setIconPickerCategoryId}
               onClearIcon={(id) => update(setCategoryIcon(draft, id, null))}
+              onSetBlueprintIcon={setIconPickerBlueprintId}
             />
           </div>
         </aside>
@@ -501,6 +505,18 @@ export function ManagerView(props: ManagerViewProps): JSX.Element {
             setIconPickerCategoryId(null);
           }}
           onClose={() => setIconPickerCategoryId(null)}
+        />
+      )}
+
+      {iconPickerBlueprintId && (
+        <IconPicker
+          language={props.language}
+          currentIconId={draft.blueprints[iconPickerBlueprintId]?.iconId ?? null}
+          onPick={(iconId) => {
+            update(setBlueprintIcon(draft, iconPickerBlueprintId, iconId));
+            setIconPickerBlueprintId(null);
+          }}
+          onClose={() => setIconPickerBlueprintId(null)}
         />
       )}
 
@@ -722,6 +738,7 @@ interface InspectorProps {
   onDeleteSubcategory: (subcategory: DraftSubcategory) => void;
   onOpenIconPicker: (categoryId: string) => void;
   onClearIcon: (categoryId: string) => void;
+  onSetBlueprintIcon: (blueprintId: string) => void;
 }
 
 function Inspector(props: InspectorProps): JSX.Element {
@@ -729,7 +746,7 @@ function Inspector(props: InspectorProps): JSX.Element {
 
   if (props.selectedBlueprintIds.length === 1) {
     const blueprint = props.draft.blueprints[props.selectedBlueprintIds[0]];
-    if (blueprint) return <BlueprintInspector language={props.language} draft={props.draft} blueprint={blueprint} conflict={props.conflicts.has(blueprint.id)} onRename={props.onRenameBlueprint} />;
+    if (blueprint) return <BlueprintInspector language={props.language} draft={props.draft} blueprint={blueprint} conflict={props.conflicts.has(blueprint.id)} onRename={props.onRenameBlueprint} onSetIcon={props.onSetBlueprintIcon} />;
   }
   if (props.selectedBlueprintIds.length > 1) {
     return <div className="inspector-block">{t('selectedCount').replace('{n}', String(props.selectedBlueprintIds.length))}</div>;
@@ -811,7 +828,7 @@ function Inspector(props: InspectorProps): JSX.Element {
   return <div className="inspector-block muted">{t('selectNodeHint')}</div>;
 }
 
-function BlueprintInspector(props: { language: Language; draft: DraftTree; blueprint: DraftBlueprint; conflict: boolean; onRename: (id: string, stem: string) => void }): JSX.Element {
+function BlueprintInspector(props: { language: Language; draft: DraftTree; blueprint: DraftBlueprint; conflict: boolean; onRename: (id: string, stem: string) => void; onSetIcon: (blueprintId: string) => void }): JSX.Element {
   const t = (key: Parameters<typeof translate>[1]): string => translate(props.language, key);
   const location = locateBlueprint(props.draft, props.blueprint.id);
   const originLabel = props.blueprint.origin === 'external' ? t('originExternal') : props.blueprint.origin === 'gameDir' ? t('originGameDir') : t('originSave');
@@ -822,9 +839,16 @@ function BlueprintInspector(props: { language: Language; draft: DraftTree; bluep
         <span>{t('icon')}</span>
         <div className="icon-field">
           {icon ? <IconImage icon={icon} size={48} /> : <Layers size={32} className="bp-card-icon" />}
-          <small className="muted">
-            {props.blueprint.iconId === null ? t('noIcon') : `#${props.blueprint.iconId} ${icon ? getBlueprintIconDisplayName(icon, props.language) : ''}`}
-          </small>
+          <div className="icon-field-actions">
+            {props.blueprint.hasCfg && (
+              <button className="secondary" onClick={() => props.onSetIcon(props.blueprint.id)}>
+                <ImageIcon size={14} /> {t('setIcon')}
+              </button>
+            )}
+            <small className="muted">
+              {props.blueprint.iconId === null ? t('noIcon') : `#${props.blueprint.iconId} ${icon ? getBlueprintIconDisplayName(icon, props.language) : ''}`}
+            </small>
+          </div>
         </div>
       </div>
       <label className="field">
@@ -920,6 +944,7 @@ function makeCopyBlueprint(draft: DraftTree, source: DraftBlueprint, newStem: st
     hasSbp: true,
     hasCfg: source.hasCfg,
     iconId: source.iconId,
+    originalIconId: source.iconId,
     warnings: []
   };
 }

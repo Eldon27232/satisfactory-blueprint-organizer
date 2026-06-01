@@ -42,6 +42,8 @@ export interface DraftBlueprint {
   hasCfg: boolean;
   /** FGIconLibrary icon id read from the blueprint's .sbpcfg (config.iconID), or null. */
   iconId: number | null;
+  /** Icon id as it exists in the .sbpcfg before edits; apply only rewrites a cfg when iconId differs from this. */
+  originalIconId: number | null;
   warnings: Notice[];
 }
 
@@ -177,6 +179,15 @@ export function setCategoryIcon(tree: DraftTree, categoryId: string, iconId: num
   const category = findCategory(next, categoryId);
   if (!category) return tree;
   category.iconId = iconId;
+  return next;
+}
+
+/** Change a single blueprint's icon (written into its .sbpcfg on apply). */
+export function setBlueprintIcon(tree: DraftTree, blueprintId: string, iconId: number | null): DraftTree {
+  const blueprint = tree.blueprints[blueprintId];
+  if (!blueprint) return tree;
+  const next = clone(tree);
+  next.blueprints[blueprintId] = { ...blueprint, iconId };
   return next;
 }
 

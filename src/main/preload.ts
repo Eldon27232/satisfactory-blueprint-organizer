@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import type { DraftApplyOptions, DraftApplyPlan, DraftTree } from '../shared/draftModel';
-import type { AutoLocateResult, BackupRecord, BlueprintDirResolution, DryRunResult, ExecuteOptions, ImportReport, PlayerStateRepairReport, RollbackReport, SaveCandidate, SaveDiscoveryResult, SaveGameLocation, UpdateCheckResult, DroppedBlueprintImport } from '../shared/types';
+import type { AutoLocateResult, BackupRecord, BlueprintDirResolution, DryRunResult, ExecuteOptions, ImportReport, PlayerStateRepairReport, RollbackReport, SaveCandidate, SaveDiscoveryResult, SaveGameLocation, ScanReport, UpdateCheckResult, DroppedBlueprintImport } from '../shared/types';
 
 const api = {
   chooseGameBlueprintDirectory: (): Promise<string | null> => ipcRenderer.invoke('dialog:directory', 'gameBlueprintDir'),
@@ -50,6 +50,7 @@ const api = {
   importDroppedBlueprints: (paths: string[]): Promise<DroppedBlueprintImport> => ipcRenderer.invoke('blueprints:importDropped', paths),
   readDirtyFlag: (savePath: string): Promise<boolean> => ipcRenderer.invoke('dirty:read', savePath),
   writeDirtyFlag: (savePath: string, dirty: boolean): Promise<void> => ipcRenderer.invoke('dirty:write', savePath, dirty),
+  scanMapping: (gameBlueprintDir: string, mappingDir: string): Promise<ScanReport> => ipcRenderer.invoke('mapping:scan', gameBlueprintDir, mappingDir),
   // Electron 32+ 移除了 File.path，改用 webUtils 在 preload 取拖入文件的真实路径。
   getPathForFile: (file: File): string => webUtils.getPathForFile(file),
   checkForUpdate: (): Promise<UpdateCheckResult> => ipcRenderer.invoke('update:check'),

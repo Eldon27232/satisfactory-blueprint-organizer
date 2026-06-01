@@ -327,6 +327,96 @@ p {
   background: #fbe9e5;
 }
 
+/* 外部映射 diff 对比弹窗 */
+.diff-dialog {
+  width: min(720px, 96vw);
+}
+
+.diff-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 18px;
+  overflow: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.diff-section {
+  border: 1px solid #e1e6e3;
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.diff-section h4 {
+  margin: 0 0 4px;
+}
+
+.diff-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.diff-bulk {
+  display: flex;
+  gap: 12px;
+}
+
+.diff-hint {
+  margin: 0 0 8px;
+  font-size: 12px;
+}
+
+.diff-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 200px;
+  overflow: auto;
+}
+
+.diff-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  background: #fbfcfb;
+}
+
+.diff-name {
+  font-weight: 600;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.diff-path {
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.diff-choice {
+  display: flex;
+  gap: 12px;
+  flex-shrink: 0;
+  font-size: 12px;
+}
+
+.diff-choice label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+
+.diff-empty {
+  font-size: 12px;
+}
+
 .update-notes {
   white-space: pre-wrap;
   word-break: break-word;

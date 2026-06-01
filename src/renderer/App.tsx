@@ -5,6 +5,8 @@ import type { BackupRecord, ImportReport, Notice, SaveCandidate, SaveGameLocatio
 import { availableLanguages, detectLanguage, saveLanguage, translate, type Language } from './i18n';
 import { ManagerView } from './ManagerView';
 import { Titlebar } from './Titlebar';
+import { computeMappingDiff, mergeMappingDiff, type MappingDiff } from '../shared/mappingDiff';
+import { MappingDiffDialog } from './MappingDiffDialog';
 
 type View = 'setup' | 'manager';
 
@@ -33,6 +35,7 @@ export function App(): JSX.Element {
   const [backups, setBackups] = useState<BackupRecord[]>([]);
   const [backupToDelete, setBackupToDelete] = useState<BackupRecord | null>(null);
   const [update, setUpdate] = useState<UpdateCheckResult | null>(null);
+  const [mappingDiffState, setMappingDiffState] = useState<{ mappingDir: string; diff: MappingDiff } | null>(null);
   const [setupWarning, setSetupWarning] = useState(false);
 
   const t = (key: Parameters<typeof translate>[1]): string => translate(language, key);
@@ -242,13 +245,27 @@ export function App(): JSX.Element {
     const mappingDir = await sbc.chooseMappingDirectory();
     if (!mappingDir) return;
     await runBusy(async () => {
-      const tree = await sbc.buildDraftFromExternal(draft.gameBlueprintDir, mappingDir, draft.savePath);
-      const blocking = tree.buildNotices.filter((notice) => notice.severity === 'error');
+      const scan = await sbc.scanMapping(draft.gameBlueprintDir, mappingDir);
+      const blocking = scan.errors.filter((notice) => notice.severity === 'error');
       if (blocking.length > 0) {
         throw new Error(blocking.map((notice) => `[${notice.code}] ${notice.message}`).join('\n'));
       }
-      setDraft(tree);
-    }, t('externalImported'));
+      const diff = computeMappingDiff(draft, scan.entries);
+      if (diff.externalOnly.length === 0 && diff.managerOnly.length === 0) {
+        setStatusKind('info');
+        setStatus(t('diffNothing'));
+        return;
+      }
+      setMappingDiffState({ mappingDir, diff });
+    });
+  }
+
+  function confirmMappingMerge(keepIds: string[], deleteIds: string[]): void {
+    if (!mappingDiffState || !draft) return;
+    const merged = mergeMappingDiff(draft, mappingDiffState.mappingDir, mappingDiffState.diff.externalOnly, keepIds, deleteIds);
+    setDraft({ ...merged, dirty: true });
+    if (merged.savePath) void window.sbc?.writeDirtyFlag(merged.savePath, true);
+    setMappingDiffState(null);
   }
 
   async function fetchPlan() {
@@ -326,6 +343,15 @@ export function App(): JSX.Element {
             fetchPlan={fetchPlan}
           />
           {status && statusKind === 'error' && <pre className="floating-status error">{status}</pre>}
+          {mappingDiffState && (
+            <MappingDiffDialog
+              language={language}
+              mappingDir={mappingDiffState.mappingDir}
+              diff={mappingDiffState.diff}
+              onCancel={() => setMappingDiffState(null)}
+              onConfirm={confirmMappingMerge}
+            />
+          )}
         </main>
       </div>
     );

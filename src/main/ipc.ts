@@ -4,6 +4,7 @@ import path from 'node:path';
 import { deleteBackup, listBackups } from '../core/backup';
 import { importDroppedBlueprintFiles } from '../core/droppedBlueprints';
 import { readDirtyFlag, writeDirtyFlag } from '../core/dirtyFlag';
+import { scanMappingFolder } from '../core/scanMapping';
 import { scanBlueprintStructure } from '../core/blueprintCategoryDiscovery';
 import { buildDraftFromExternalMapping, buildDraftFromSave } from '../core/buildDraft';
 import { executeDraftImport, planDraftApply } from '../core/applyDraft';
@@ -113,6 +114,7 @@ export function registerIpc(): void {
   ipcMain.handle('blueprints:importDropped', async (_event, paths: string[]) => importDroppedBlueprintFiles(paths));
   ipcMain.handle('dirty:read', async (_event, savePath: string) => readDirtyFlag(savePath));
   ipcMain.handle('dirty:write', async (_event, savePath: string, dirty: boolean) => writeDirtyFlag(savePath, dirty));
+  ipcMain.handle('mapping:scan', async (_event, gameBlueprintDir: string, mappingDir: string) => scanMappingFolder({ gameBlueprintDir, mappingDir }));
 
   ipcMain.handle('shell:openPath', async (_event, targetPath: string) => {
     const resolved = path.resolve(targetPath);

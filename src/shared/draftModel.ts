@@ -44,6 +44,8 @@ export interface DraftBlueprint {
   iconId: number | null;
   /** Icon id as it exists in the .sbpcfg before edits; apply only rewrites a cfg when iconId differs from this. */
   originalIconId: number | null;
+  /** Manager-only blueprint the user chose to keep: on apply its files are written back into the external mapping folder. */
+  writeBackToMapping?: boolean;
   warnings: Notice[];
 }
 
@@ -75,6 +77,8 @@ export interface DraftTree {
   buildNotices: Notice[];
   /** True when the manager tree has unapplied manual edits (persisted per-save in app data). */
   dirty?: boolean;
+  /** External mapping folder this draft was last diffed against; target for write-backs on apply. */
+  mappingDir?: string;
 }
 
 // ---------------------------------------------------------------------------

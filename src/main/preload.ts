@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type { DraftApplyOptions, DraftApplyPlan, DraftTree } from '../shared/draftModel';
-import type { AutoLocateResult, BackupRecord, BlueprintDirResolution, DryRunResult, ExecuteOptions, ImportReport, PlayerStateRepairReport, RollbackReport, SaveCandidate, SaveDiscoveryResult, SaveGameLocation, UpdateCheckResult } from '../shared/types';
+import type { AutoLocateResult, BackupRecord, BlueprintDirResolution, DryRunResult, ExecuteOptions, ImportReport, PlayerStateRepairReport, RollbackReport, SaveCandidate, SaveDiscoveryResult, SaveGameLocation, UpdateCheckResult, DroppedBlueprintImport } from '../shared/types';
 
 const api = {
   chooseGameBlueprintDirectory: (): Promise<string | null> => ipcRenderer.invoke('dialog:directory', 'gameBlueprintDir'),
@@ -47,6 +47,7 @@ const api = {
   listBackups: (): Promise<BackupRecord[]> => ipcRenderer.invoke('backup:list'),
   rollback: (backupDir: string): Promise<RollbackReport> => ipcRenderer.invoke('backup:rollback', backupDir),
   deleteBackup: (backupDir: string): Promise<void> => ipcRenderer.invoke('backup:delete', backupDir),
+  importDroppedBlueprints: (paths: string[]): Promise<DroppedBlueprintImport> => ipcRenderer.invoke('blueprints:importDropped', paths),
   checkForUpdate: (): Promise<UpdateCheckResult> => ipcRenderer.invoke('update:check'),
   openExternal: (url: string): Promise<void> => ipcRenderer.invoke('shell:openExternal', url),
   openPath: (targetPath: string): Promise<string> => ipcRenderer.invoke('shell:openPath', targetPath),

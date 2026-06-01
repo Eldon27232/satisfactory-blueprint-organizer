@@ -76,6 +76,7 @@
   "warnings": "warning",
   "errors": "error",
   "warningsErrors": "提示 / 错误",
+  "viewNotices": "查看详情",
   "allGood": "没有 warning / error",
 
   "iconPickerTitle": "选择分类图标",

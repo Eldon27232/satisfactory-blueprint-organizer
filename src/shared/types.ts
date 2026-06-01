@@ -190,6 +190,18 @@ export interface UpdateCheckResult {
   url: string;
 }
 
+export interface DroppedBlueprintData {
+  stem: string;
+  sbpPath: string;
+  cfgPath: string;
+  iconId: number | null;
+}
+
+export interface DroppedBlueprintImport {
+  blueprints: DroppedBlueprintData[];
+  errors: Notice[];
+}
+
 export interface PlayerStateRepairReport {
   backupDir: string;
   selectedSavePath: string;

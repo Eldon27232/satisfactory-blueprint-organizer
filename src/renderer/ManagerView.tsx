@@ -34,6 +34,7 @@ import {
 import { ConfirmDialog } from './ConfirmDialog';
 import { IconImage, IconPicker } from './IconPicker';
 import { translate, type Language } from './i18n';
+import type { Notice } from '../shared/types';
 
 type Selection = { type: 'category'; id: string } | { type: 'subcategory'; id: string } | null;
 type DragState = { kind: 'blueprints'; ids: string[] } | { kind: 'category'; id: string } | { kind: 'subcategory'; id: string } | null;
@@ -64,13 +65,16 @@ export function ManagerView(props: ManagerViewProps): JSX.Element {
   const [confirmPlan, setConfirmPlan] = useState<DraftApplyPlan | null>(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
   const [clipboard, setClipboard] = useState<Clipboard>(null);
+  const [importNotices, setImportNotices] = useState<Notice[]>([]);
+  const [showNotices, setShowNotices] = useState(false);
   const drag = useRef<DragState>(null);
 
   const validation = useMemo(() => validateDraft(draft), [draft]);
   const conflicts = validation.conflictBlueprintIds;
   const recycledIds = useMemo(() => getRecycledBlueprintIdSet(draft), [draft]);
-  const errorCount = validation.notices.filter((notice) => notice.severity === 'error').length + draft.buildNotices.filter((notice) => notice.severity === 'error').length;
-  const warningCount = validation.notices.filter((notice) => notice.severity === 'warning').length + draft.buildNotices.filter((notice) => notice.severity === 'warning').length;
+  const allNotices = useMemo(() => [...draft.buildNotices, ...validation.notices, ...importNotices], [draft.buildNotices, validation.notices, importNotices]);
+  const errorCount = allNotices.filter((notice) => notice.severity === 'error').length;
+  const warningCount = allNotices.filter((notice) => notice.severity === 'warning').length;
 
   const visibleBlueprints = useMemo(() => computeVisibleBlueprints(draft, selection, search, recycledIds), [draft, selection, search, recycledIds]);
 
@@ -129,6 +133,47 @@ export function ManagerView(props: ManagerViewProps): JSX.Element {
     const ids = visibleBlueprints.groups.flatMap((group) => group.blueprints.map((blueprint) => blueprint.id));
     const allSelected = ids.length > 0 && ids.every((id) => selectedBlueprintIds.includes(id));
     setSelectedBlueprintIds(allSelected ? [] : ids);
+  }
+
+  // 从系统拖入 .sbp/.sbpcfg 文件到当前选中的子分类；成对校验，缺一不导入并计入 error。
+  async function onDropFiles(event: React.DragEvent<HTMLElement>): Promise<void> {
+    if (event.dataTransfer.files.length === 0) return; // 内部拖拽（移动蓝图）不在此处理
+    event.preventDefault();
+    const paths = Array.from(event.dataTransfer.files)
+      .map((file) => (file as File & { path?: string }).path)
+      .filter((value): value is string => Boolean(value));
+    if (paths.length === 0) return;
+    if (selection?.type !== 'subcategory') {
+      setImportNotices([{ severity: 'error', code: 'NO_SUBCATEGORY', message: '请先在左侧选择一个子分类，再把蓝图文件拖进来。' }]);
+      setShowNotices(true);
+      return;
+    }
+    const sbc = window.sbc;
+    if (!sbc) return;
+    const targetSubId = selection.id;
+    const result = await sbc.importDroppedBlueprints(paths);
+    if (result.blueprints.length > 0) {
+      const taken = allStemsLower(draft);
+      const additions: DraftBlueprint[] = result.blueprints.map((item) => {
+        const stem = nextAvailableStem(item.stem, taken);
+        taken.add(stem.trim().toLowerCase());
+        return {
+          id: makeId('bp'),
+          stem,
+          originalStem: item.stem,
+          origin: 'external',
+          sourceSbpPath: item.sbpPath,
+          sourceCfgPath: item.cfgPath,
+          hasSbp: true,
+          hasCfg: true,
+          iconId: item.iconId,
+          warnings: []
+        };
+      });
+      setDraft(addBlueprints(draft, additions, targetSubId));
+    }
+    setImportNotices(result.errors);
+    if (result.errors.length > 0) setShowNotices(true);
   }
 
   // ---- drag & drop ----
@@ -303,8 +348,8 @@ export function ManagerView(props: ManagerViewProps): JSX.Element {
           </div>
         </div>
         <div className="manager-top-right">
-          <span className={`pill ${errorCount ? 'error' : 'ok'}`}>{errorCount} {t('errors')}</span>
-          <span className={`pill ${warningCount ? 'warning' : 'ok'}`}>{warningCount} {t('warnings')}</span>
+          <span className={`pill clickable ${errorCount ? 'error' : 'ok'}`} title={t('viewNotices')} onClick={() => setShowNotices(true)}>{errorCount} {t('errors')}</span>
+          <span className={`pill clickable ${warningCount ? 'warning' : 'ok'}`} title={t('viewNotices')} onClick={() => setShowNotices(true)}>{warningCount} {t('warnings')}</span>
           <button className="secondary" disabled={visibleBlueprintIds.length === 0} onClick={toggleSelectAllVisible}>
             <CheckSquare size={16} /> {allVisibleSelected ? t('deselectAll') : t('selectAll')}
           </button>
@@ -369,7 +414,11 @@ export function ManagerView(props: ManagerViewProps): JSX.Element {
         </aside>
 
         {/* MIDDLE: blueprint grid */}
-        <section className="pane grid-pane">
+        <section
+          className="pane grid-pane"
+          onDragOver={(event) => { if (event.dataTransfer.types.includes('Files')) event.preventDefault(); }}
+          onDrop={(event) => void onDropFiles(event)}
+        >
           <div className="pane-head">
             <input className="search" placeholder={t('searchBlueprints')} value={search} onChange={(event) => setSearch(event.target.value)} />
             {hasSelection && <small className="muted">{t('selectedCount').replace('{n}', String(selectedBlueprintIds.length))}</small>}
@@ -457,6 +506,35 @@ export function ManagerView(props: ManagerViewProps): JSX.Element {
 
       {confirmPlan && (
         <ConfirmDialog language={props.language} plan={confirmPlan} busy={confirmBusy || props.busy} onCancel={() => setConfirmPlan(null)} onConfirm={confirmApply} />
+      )}
+
+      {showNotices && (
+        <div className="modal-backdrop" onClick={() => setShowNotices(false)}>
+          <div className="modal notices-modal" onClick={(event) => event.stopPropagation()}>
+            <header className="modal-head">
+              <h2>{t('warningsErrors')}</h2>
+            </header>
+            <div className="notices-body">
+              {allNotices.length === 0 ? (
+                <div className="empty-state">{t('allGood')}</div>
+              ) : (
+                allNotices.map((notice, index) => (
+                  <div className={`notice ${notice.severity}`} key={`${notice.code}-${index}`}>
+                    <AlertTriangle size={16} />
+                    <div>
+                      <strong>{notice.code}</strong>
+                      <span>{notice.message}</span>
+                      {notice.path && <small>{notice.path}</small>}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+            <footer className="confirm-actions" style={{ padding: '14px 18px' }}>
+              <button className="primary" onClick={() => setShowNotices(false)}>{t('gotIt')}</button>
+            </footer>
+          </div>
+        </div>
       )}
 
       {pendingDelete && (

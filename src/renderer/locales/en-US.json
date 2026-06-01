@@ -76,6 +76,7 @@
   "warnings": "warning",
   "errors": "error",
   "warningsErrors": "Notices / errors",
+  "viewNotices": "View details",
   "allGood": "No warning / error",
 
   "iconPickerTitle": "Choose category icon",

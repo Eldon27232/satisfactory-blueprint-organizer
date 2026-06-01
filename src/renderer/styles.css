@@ -342,6 +342,20 @@ p {
   line-height: 1.5;
 }
 
+.pill.clickable {
+  cursor: pointer;
+}
+
+.notices-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 18px;
+  overflow: auto;
+  flex: 1;
+  min-height: 0;
+}
+
 .grid.two {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);

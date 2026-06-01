@@ -610,14 +610,12 @@ function baseName(targetPath: string): string {
   return targetPath.replace(/[\\/]+$/, '').split(/[\\/]/).pop() ?? targetPath;
 }
 
-// 更新公告按界面语言取对应区块。约定 release body 用 HTML 注释分段：
-// <!--zh-->中文 md<!--/zh--> 与 <!--en-->English md<!--/en-->（GitHub 页面隐藏注释、双语都显示）。
-// 没有标记时回退显示全文。
+// 更新公告按界面语言取对应区块。约定 release body 用二级标题分段：
+// "## 简体中文" 段与 "## English" 段。中文界面取中文段、其它取英文段；无标记则回退显示全文。
 function pickReleaseNotes(notes: string, language: string): string {
-  const block = (tag: string): string | undefined =>
-    new RegExp(`<!--\\s*${tag}\\s*-->([\\s\\S]*?)<!--\\s*/${tag}\\s*-->`, 'i').exec(notes)?.[1]?.trim();
-  const zh = block('zh');
-  const en = block('en');
+  const section = (header: RegExp): string | undefined => header.exec(notes)?.[1]?.trim();
+  const zh = section(/##\s*(?:简体中文|中文)\s*\r?\n([\s\S]*?)(?=\r?\n##\s|$)/i);
+  const en = section(/##\s*English\s*\r?\n([\s\S]*?)(?=\r?\n##\s|$)/i);
   const preferZh = language.toLowerCase().startsWith('zh');
   return (preferZh ? zh ?? en : en ?? zh) ?? notes.trim();
 }

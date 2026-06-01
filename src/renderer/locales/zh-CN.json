@@ -133,6 +133,11 @@
   "needSaveTitle": "尚未选择存档",
   "needSaveMessage": "请先在上方选择用户名、游戏账户和存档（或用下方“手动选择”按钮指定 .sav 和蓝图目录），然后再进入蓝图管理。",
   "gotIt": "知道了",
+  "updateAvailableTitle": "发现新版本",
+  "updateNewVersion": "检测到新版本 {v}（当前 {c}），是否前往更新？",
+  "updateNotesLabel": "更新内容",
+  "updateNow": "前往更新",
+  "updateLater": "稍后",
 
   "tbMinimize": "最小化",
   "tbMaximize": "最大化",

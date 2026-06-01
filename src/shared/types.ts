@@ -182,6 +182,14 @@ export interface RollbackReport {
   errors: Notice[];
 }
 
+export interface UpdateCheckResult {
+  currentVersion: string;
+  latestVersion: string | null;
+  hasUpdate: boolean;
+  notes: string;
+  url: string;
+}
+
 export interface PlayerStateRepairReport {
   backupDir: string;
   selectedSavePath: string;

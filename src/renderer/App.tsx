@@ -1,7 +1,7 @@
 import { AlertTriangle, ArchiveRestore, CheckCircle2, FolderOpen, RotateCcw, ShieldAlert, Trash2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type { DraftTree } from '../shared/draftModel';
-import type { BackupRecord, ImportReport, Notice, SaveCandidate, SaveGameLocation } from '../shared/types';
+import type { BackupRecord, ImportReport, Notice, SaveCandidate, SaveGameLocation, UpdateCheckResult } from '../shared/types';
 import { availableLanguages, detectLanguage, saveLanguage, translate, type Language } from './i18n';
 import { ManagerView } from './ManagerView';
 import { Titlebar } from './Titlebar';
@@ -32,6 +32,7 @@ export function App(): JSX.Element {
   const [importReport, setImportReport] = useState<ImportReport | null>(null);
   const [backups, setBackups] = useState<BackupRecord[]>([]);
   const [backupToDelete, setBackupToDelete] = useState<BackupRecord | null>(null);
+  const [update, setUpdate] = useState<UpdateCheckResult | null>(null);
   const [setupWarning, setSetupWarning] = useState(false);
 
   const t = (key: Parameters<typeof translate>[1]): string => translate(language, key);
@@ -39,6 +40,9 @@ export function App(): JSX.Element {
   useEffect(() => {
     void autoLocate();
     void refreshBackups();
+    void window.sbc?.checkForUpdate().then((result) => {
+      if (result?.hasUpdate) setUpdate(result);
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -513,6 +517,33 @@ export function App(): JSX.Element {
               </button>
               <button className="danger" onClick={() => void confirmDeleteBackup()}>
                 {t('delete')}
+              </button>
+            </footer>
+          </div>
+        </div>
+      )}
+
+      {update && update.latestVersion && (
+        <div className="modal-backdrop" onClick={() => setUpdate(null)}>
+          <div className="modal small-confirm" onClick={(event) => event.stopPropagation()}>
+            <header className="modal-head">
+              <h2>{t('updateAvailableTitle')}</h2>
+            </header>
+            <div className="confirm-body">
+              <p>{t('updateNewVersion').replace('{v}', update.latestVersion).replace('{c}', update.currentVersion)}</p>
+              {update.notes && (
+                <>
+                  <strong>{t('updateNotesLabel')}</strong>
+                  <pre className="update-notes">{update.notes}</pre>
+                </>
+              )}
+            </div>
+            <footer className="confirm-actions" style={{ padding: '14px 18px' }}>
+              <button className="secondary" onClick={() => setUpdate(null)}>
+                {t('updateLater')}
+              </button>
+              <button className="primary" onClick={() => { void window.sbc?.openExternal(update.url); setUpdate(null); }}>
+                {t('updateNow')}
               </button>
             </footer>
           </div>

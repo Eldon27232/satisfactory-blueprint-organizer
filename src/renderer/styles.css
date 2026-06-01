@@ -210,7 +210,8 @@ p {
 
 .path-picker {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  /* 固定标签列宽，使各行下拉左边缘对齐（用户名/游戏名/存档）。 */
+  grid-template-columns: 4em minmax(0, 1fr);
   align-items: center;
   gap: 8px;
   font-weight: 600;
@@ -262,8 +263,8 @@ p {
   flex: 1;
   min-width: 0;
   gap: 8px;
-  /* 标签列按文字宽自适应，下拉紧挨标签（不再留固定列宽的空白）。 */
-  grid-template-columns: auto minmax(0, 1fr);
+  /* 与存档行同样的标签列宽，保证下拉左边缘对齐。 */
+  grid-template-columns: 4em minmax(0, 1fr);
 }
 
 /* 备份面板 */
@@ -324,6 +325,21 @@ p {
 
 .icon-button.danger:hover {
   background: #fbe9e5;
+}
+
+.update-notes {
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 240px;
+  overflow: auto;
+  margin: 6px 0 0;
+  padding: 8px 10px;
+  border: 1px solid #e1e6e3;
+  border-radius: 6px;
+  background: #f3f6f4;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .grid.two {

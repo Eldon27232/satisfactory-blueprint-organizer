@@ -133,6 +133,11 @@
   "needSaveTitle": "No save selected",
   "needSaveMessage": "Pick a user, game account and save above (or use the manual buttons below to choose a .sav and blueprint folder) before opening the blueprint manager.",
   "gotIt": "Got it",
+  "updateAvailableTitle": "Update available",
+  "updateNewVersion": "New version {v} is available (current {c}). Update now?",
+  "updateNotesLabel": "What's new",
+  "updateNow": "Update now",
+  "updateLater": "Later",
 
   "tbMinimize": "Minimize",
   "tbMaximize": "Maximize",

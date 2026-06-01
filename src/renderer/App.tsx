@@ -269,6 +269,7 @@ export function App(): JSX.Element {
         const refreshed = await sbc.buildDraftFromSave(draft.gameBlueprintDir, draft.savePath);
         setDraft(refreshed);
       }
+      if (draft.savePath) await sbc.writeDirtyFlag(draft.savePath, false);
       setStatusKind(report.verificationResult.passed ? 'info' : 'error');
       setStatus(`${t('importCompleted')} ${report.verificationResult.passed ? t('verifyPassed') : t('verifyFailed')}\n${report.verificationResult.message}`);
     });

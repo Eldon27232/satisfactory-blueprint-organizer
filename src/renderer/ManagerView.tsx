@@ -69,6 +69,7 @@ export function ManagerView(props: ManagerViewProps): JSX.Element {
   const [clipboard, setClipboard] = useState<Clipboard>(null);
   const [importNotices, setImportNotices] = useState<Notice[]>([]);
   const [showNotices, setShowNotices] = useState(false);
+  const [confirmLeave, setConfirmLeave] = useState(false);
   const drag = useRef<DragState>(null);
 
   const validation = useMemo(() => validateDraft(draft), [draft]);
@@ -90,7 +91,8 @@ export function ManagerView(props: ManagerViewProps): JSX.Element {
 
   function update(next: DraftTree): void {
     setDeleteError('');
-    setDraft(next);
+    setDraft({ ...next, dirty: true });
+    if (next.savePath) void window.sbc?.writeDirtyFlag(next.savePath, true);
   }
 
   function selectNode(node: Selection): void {
@@ -339,7 +341,7 @@ export function ManagerView(props: ManagerViewProps): JSX.Element {
     <div className="manager">
       <header className="manager-top">
         <div className="manager-top-left">
-          <button className="secondary" onClick={props.onBack} disabled={props.busy}>
+          <button className="secondary" onClick={() => (draft.dirty ? setConfirmLeave(true) : props.onBack())} disabled={props.busy}>
             {t('back')}
           </button>
           <button className="secondary" onClick={props.onImportExternal} disabled={props.busy}>
@@ -548,6 +550,23 @@ export function ManagerView(props: ManagerViewProps): JSX.Element {
             </div>
             <footer className="confirm-actions" style={{ padding: '14px 18px' }}>
               <button className="primary" onClick={() => setShowNotices(false)}>{t('gotIt')}</button>
+            </footer>
+          </div>
+        </div>
+      )}
+
+      {confirmLeave && (
+        <div className="modal-backdrop" onClick={() => setConfirmLeave(false)}>
+          <div className="modal small-confirm" onClick={(event) => event.stopPropagation()}>
+            <header className="modal-head">
+              <h2>{t('unsavedTitle')}</h2>
+            </header>
+            <div className="confirm-body">
+              <p>{t('unsavedMessage')}</p>
+            </div>
+            <footer className="confirm-actions" style={{ padding: '14px 18px' }}>
+              <button className="secondary" onClick={() => setConfirmLeave(false)}>{t('cancel')}</button>
+              <button className="danger" onClick={() => { setConfirmLeave(false); props.onBack(); }}>{t('discardLeave')}</button>
             </footer>
           </div>
         </div>

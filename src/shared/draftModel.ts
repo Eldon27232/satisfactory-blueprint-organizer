@@ -73,6 +73,8 @@ export interface DraftTree {
   sessionName: string | null;
   /** Notices produced while building the draft (import-time warnings, icon issues, ...). */
   buildNotices: Notice[];
+  /** True when the manager tree has unapplied manual edits (persisted per-save in app data). */
+  dirty?: boolean;
 }
 
 // ---------------------------------------------------------------------------

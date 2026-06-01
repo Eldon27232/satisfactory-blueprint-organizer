@@ -48,6 +48,8 @@ const api = {
   rollback: (backupDir: string): Promise<RollbackReport> => ipcRenderer.invoke('backup:rollback', backupDir),
   deleteBackup: (backupDir: string): Promise<void> => ipcRenderer.invoke('backup:delete', backupDir),
   importDroppedBlueprints: (paths: string[]): Promise<DroppedBlueprintImport> => ipcRenderer.invoke('blueprints:importDropped', paths),
+  readDirtyFlag: (savePath: string): Promise<boolean> => ipcRenderer.invoke('dirty:read', savePath),
+  writeDirtyFlag: (savePath: string, dirty: boolean): Promise<void> => ipcRenderer.invoke('dirty:write', savePath, dirty),
   // Electron 32+ 移除了 File.path，改用 webUtils 在 preload 取拖入文件的真实路径。
   getPathForFile: (file: File): string => webUtils.getPathForFile(file),
   checkForUpdate: (): Promise<UpdateCheckResult> => ipcRenderer.invoke('update:check'),

@@ -3,6 +3,7 @@ import { existsSync, promises as fs } from 'node:fs';
 import path from 'node:path';
 import { deleteBackup, listBackups } from '../core/backup';
 import { importDroppedBlueprintFiles } from '../core/droppedBlueprints';
+import { readDirtyFlag, writeDirtyFlag } from '../core/dirtyFlag';
 import { scanBlueprintStructure } from '../core/blueprintCategoryDiscovery';
 import { buildDraftFromExternalMapping, buildDraftFromSave } from '../core/buildDraft';
 import { executeDraftImport, planDraftApply } from '../core/applyDraft';
@@ -110,6 +111,8 @@ export function registerIpc(): void {
   ipcMain.handle('backup:rollback', async (_event, backupDir: string) => rollbackFromBackup(backupDir));
   ipcMain.handle('backup:delete', async (_event, backupDir: string) => deleteBackup(backupDir));
   ipcMain.handle('blueprints:importDropped', async (_event, paths: string[]) => importDroppedBlueprintFiles(paths));
+  ipcMain.handle('dirty:read', async (_event, savePath: string) => readDirtyFlag(savePath));
+  ipcMain.handle('dirty:write', async (_event, savePath: string, dirty: boolean) => writeDirtyFlag(savePath, dirty));
 
   ipcMain.handle('shell:openPath', async (_event, targetPath: string) => {
     const resolved = path.resolve(targetPath);

@@ -1,9 +1,19 @@
 import { X } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { getBlueprintIconDisplayName, listVisibleBlueprintIcons, type BlueprintIconRecord, type BlueprintIconType } from '../shared/blueprintIcons';
-import { translate, type Language } from './i18n';
+import { translate, type Language, type TranslationKey } from './i18n';
 
 const ICON_TYPES: BlueprintIconType[] = ['ESIT_Building', 'ESIT_Equipment', 'ESIT_Part', 'ESIT_Material', 'ESIT_Monochrome', 'ESIT_Custom', 'ESIT_MapStamp'];
+
+const ICON_TYPE_KEYS: Record<BlueprintIconType, TranslationKey> = {
+  ESIT_Building: 'iconTypeBuilding',
+  ESIT_Equipment: 'iconTypeEquipment',
+  ESIT_Part: 'iconTypePart',
+  ESIT_Material: 'iconTypeMaterial',
+  ESIT_Monochrome: 'iconTypeMonochrome',
+  ESIT_Custom: 'iconTypeCustom',
+  ESIT_MapStamp: 'iconTypeMapStamp'
+};
 
 interface IconPickerProps {
   language: Language;
@@ -43,7 +53,7 @@ export function IconPicker(props: IconPickerProps): JSX.Element {
             <option value="all">{t('allTypes')}</option>
             {ICON_TYPES.map((iconType) => (
               <option key={iconType} value={iconType}>
-                {iconType.replace('ESIT_', '')}
+                {t(ICON_TYPE_KEYS[iconType])}
               </option>
             ))}
           </select>

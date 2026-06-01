@@ -436,7 +436,6 @@ p {
 }
 
 .update-notes {
-  white-space: pre-wrap;
   word-break: break-word;
   max-height: 240px;
   overflow: auto;
@@ -445,9 +444,22 @@ p {
   border: 1px solid #e1e6e3;
   border-radius: 6px;
   background: #f3f6f4;
-  font-family: inherit;
   font-size: 12px;
-  line-height: 1.5;
+  line-height: 1.6;
+}
+
+.update-notes .notes-heading {
+  font-weight: 700;
+  margin: 6px 0 2px;
+  color: #283235;
+}
+
+.update-notes .notes-heading:first-child {
+  margin-top: 0;
+}
+
+.update-notes .notes-item {
+  padding-left: 2px;
 }
 
 .pill.clickable {

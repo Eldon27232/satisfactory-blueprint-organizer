@@ -567,7 +567,7 @@ export function App(): JSX.Element {
               {updatePhase === 'available' && updateInfo.notes && (
                 <>
                   <strong>{t('updateNotesLabel')}</strong>
-                  <pre className="update-notes">{updateInfo.notes}</pre>
+                  {renderReleaseNotes(pickReleaseNotes(updateInfo.notes, language))}
                 </>
               )}
               {updatePhase === 'downloading' && (
@@ -608,6 +608,45 @@ function parentDir(filePath: string): string {
 
 function baseName(targetPath: string): string {
   return targetPath.replace(/[\\/]+$/, '').split(/[\\/]/).pop() ?? targetPath;
+}
+
+// 更新公告按界面语言取对应区块。约定 release body 用 HTML 注释分段：
+// <!--zh-->中文 md<!--/zh--> 与 <!--en-->English md<!--/en-->（GitHub 页面隐藏注释、双语都显示）。
+// 没有标记时回退显示全文。
+function pickReleaseNotes(notes: string, language: string): string {
+  const block = (tag: string): string | undefined =>
+    new RegExp(`<!--\\s*${tag}\\s*-->([\\s\\S]*?)<!--\\s*/${tag}\\s*-->`, 'i').exec(notes)?.[1]?.trim();
+  const zh = block('zh');
+  const en = block('en');
+  const preferZh = language.toLowerCase().startsWith('zh');
+  return (preferZh ? zh ?? en : en ?? zh) ?? notes.trim();
+}
+
+// 极简 markdown 渲染：标题（#）、无序列表（-/*）、普通段落。够更新公告用，不引入依赖。
+function renderReleaseNotes(text: string): JSX.Element {
+  return (
+    <div className="update-notes">
+      {text.split('\n').map((raw, index) => {
+        const line = raw.trim();
+        if (!line) return null;
+        if (/^#{1,6}\s/.test(line)) {
+          return (
+            <div key={index} className="notes-heading">
+              {line.replace(/^#{1,6}\s+/, '')}
+            </div>
+          );
+        }
+        if (/^[-*]\s/.test(line)) {
+          return (
+            <div key={index} className="notes-item">
+              • {line.replace(/^[-*]\s+/, '')}
+            </div>
+          );
+        }
+        return <div key={index}>{line}</div>;
+      })}
+    </div>
+  );
 }
 
 function NoticeList(props: { notices: Notice[]; emptyLabel: string }): JSX.Element {

@@ -61,6 +61,8 @@ export interface DraftCategory {
   name: string;
   /** FGIconLibrary integer id, or null to leave the existing IconID untouched. */
   iconId: number | null;
+  /** Icon id read from the save before edits; used to report only genuinely changed category icons. */
+  originalIconId?: number | null;
   subcategories: DraftSubcategory[];
 }
 
@@ -515,6 +517,8 @@ export interface DraftApplyPlan {
   /** Files removed because their blueprint was put in the recycle bin. */
   deletions: string[];
   saveOnly: string[];
+  /** Files written back into the external mapping folder (kept manager-only blueprints). */
+  writeBacks: string[];
   notices: Notice[];
   /** True only when there are no blocking errors and a writable save is selected. */
   canApply: boolean;

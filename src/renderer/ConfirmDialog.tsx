@@ -22,6 +22,8 @@ export function ConfirmDialog(props: ConfirmDialogProps): JSX.Element {
     (sum, category) => sum + category.subcategories.reduce((subSum, subcategory) => subSum + subcategory.blueprintStems.length, 0),
     0
   );
+  const [showChanges, setShowChanges] = useState(false);
+  const totalChanges = plan.copies.length + plan.renames.length + plan.deletions.length + plan.writeBacks.length + plan.iconUpdates.length;
 
   return (
     <div className="modal-backdrop" onClick={props.busy ? undefined : props.onCancel}>
@@ -38,40 +40,56 @@ export function ConfirmDialog(props: ConfirmDialogProps): JSX.Element {
           <Row label="SessionName" value={plan.sessionName ?? '-'} />
           <p className="backup-note">{t('backupNote')}</p>
 
-          <div className="confirm-stats">
-            <Stat label={t('filesToCopy')} value={plan.copies.length} />
-            <Stat label={t('filesToRename')} value={plan.renames.length} />
-            <Stat label={t('filesToDelete')} value={plan.deletions.length} />
-            <Stat label={t('categoriesToUpdate')} value={plan.categoryPlan.length} />
-            <Stat label={t('iconUpdatesLabel')} value={plan.iconUpdates.length} />
-            <Stat label={t('blueprintsCount')} value={totalCategoryBlueprints} />
-            <Stat label={t('saveOnlyLabel')} value={plan.saveOnly.length} />
-          </div>
+          <button className="link view-changes-toggle" onClick={() => setShowChanges((value) => !value)}>
+            {showChanges ? '▾' : '▸'} {t('viewChanges')} ({totalChanges})
+          </button>
 
-          {plan.renames.length > 0 && (
-            <Section title={t('filesToRename')}>
-              {plan.renames.map((rename) => (
-                <li key={rename.to}>
-                  {baseName(rename.from)} → {baseName(rename.to)}
-                </li>
-              ))}
-            </Section>
-          )}
-          {plan.deletions.length > 0 && (
-            <Section title={t('filesToDelete')}>
-              {plan.deletions.map((file) => (
-                <li key={file}>{baseName(file)}</li>
-              ))}
-            </Section>
-          )}
-          {plan.iconUpdates.length > 0 && (
-            <Section title={t('iconUpdatesLabel')}>
-              {plan.iconUpdates.map((icon) => (
-                <li key={icon.category}>
-                  {icon.category}: IconID {icon.iconId}
-                </li>
-              ))}
-            </Section>
+          {showChanges && (
+            <>
+              <div className="confirm-stats">
+                <Stat label={t('filesToCopy')} value={plan.copies.length} />
+                <Stat label={t('filesToRename')} value={plan.renames.length} />
+                <Stat label={t('filesToDelete')} value={plan.deletions.length} />
+                <Stat label={t('writeBacksLabel')} value={plan.writeBacks.length} />
+                <Stat label={t('categoriesToUpdate')} value={plan.categoryPlan.length} />
+                <Stat label={t('iconUpdatesLabel')} value={plan.iconUpdates.length} />
+                <Stat label={t('blueprintsCount')} value={totalCategoryBlueprints} />
+                <Stat label={t('saveOnlyLabel')} value={plan.saveOnly.length} />
+              </div>
+
+              {plan.renames.length > 0 && (
+                <Section title={t('filesToRename')}>
+                  {plan.renames.map((rename) => (
+                    <li key={rename.to}>
+                      {baseName(rename.from)} → {baseName(rename.to)}
+                    </li>
+                  ))}
+                </Section>
+              )}
+              {plan.deletions.length > 0 && (
+                <Section title={t('filesToDelete')}>
+                  {plan.deletions.map((file) => (
+                    <li key={file}>{baseName(file)}</li>
+                  ))}
+                </Section>
+              )}
+              {plan.writeBacks.length > 0 && (
+                <Section title={t('writeBacksLabel')}>
+                  {plan.writeBacks.map((file) => (
+                    <li key={file}>{baseName(file)}</li>
+                  ))}
+                </Section>
+              )}
+              {plan.iconUpdates.length > 0 && (
+                <Section title={t('iconUpdatesLabel')}>
+                  {plan.iconUpdates.map((icon) => (
+                    <li key={icon.category}>
+                      {icon.category}: IconID {icon.iconId}
+                    </li>
+                  ))}
+                </Section>
+              )}
+            </>
           )}
 
           <NoticeBlock notices={errors} className="error" />

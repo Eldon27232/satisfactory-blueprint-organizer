@@ -4,6 +4,9 @@ import { BLUEPRINT_CONFIG_EXT, BLUEPRINT_EXT } from '../shared/constants';
 import {
   computeCategoryPlan,
   getRecycledBlueprintIdSet,
+  isRecycleCategory,
+  locateBlueprint,
+  UNNAMED,
   validateDraft,
   type DraftApplyOptions,
   type DraftApplyPlan,
@@ -49,6 +52,8 @@ interface ResolvedFileOps {
   saveOnly: string[];
   /** .sbpcfg files whose iconID must be rewritten (icon changed in the manager). */
   iconWrites: Array<{ cfgPath: string; iconId: number }>;
+  /** Files copied back into the external mapping folder for kept manager-only blueprints. */
+  mappingWriteBacks: Array<{ fromSbp: string; toSbp: string; fromCfg: string | null; toCfg: string | null }>;
   notices: Notice[];
 }
 
@@ -56,6 +61,10 @@ const RENAME_STAGING_DIR = '.sbc-rename-staging';
 
 function gamePath(gameBlueprintDir: string, stem: string, ext: string): string {
   return path.join(gameBlueprintDir, `${stem}${ext}`);
+}
+
+function sanitizeSegment(name: string): string {
+  return name.trim().replace(/[<>:"/\\|?*\x00-\x1f]/g, '_') || UNNAMED;
 }
 
 /** Resolve the concrete copy/rename operations and any on-disk conflicts. */
@@ -66,6 +75,7 @@ async function resolveFileOps(draft: DraftTree): Promise<ResolvedFileOps> {
   const removedStems: string[] = [];
   const saveOnly: string[] = [];
   const iconWrites: Array<{ cfgPath: string; iconId: number }> = [];
+  const mappingWriteBacks: ResolvedFileOps['mappingWriteBacks'] = [];
   const notices: Notice[] = [];
   const gameDir = draft.gameBlueprintDir;
   const recycledIds = getRecycledBlueprintIdSet(draft);
@@ -118,7 +128,24 @@ async function resolveFileOps(draft: DraftTree): Promise<ResolvedFileOps> {
     iconWrites.push({ cfgPath: gamePath(gameDir, blueprint.stem, BLUEPRINT_CONFIG_EXT), iconId: blueprint.iconId });
   }
 
-  return { copies, renames, deletions, removedStems, saveOnly, iconWrites, notices };
+  // Write-backs: manager-only blueprints the user chose to keep are copied into the external mapping
+  // folder under their current category/subcategory (source = their final file in the game dir).
+  if (draft.mappingDir) {
+    for (const blueprint of Object.values(draft.blueprints)) {
+      if (recycledIds.has(blueprint.id) || !blueprint.writeBackToMapping || !blueprint.hasSbp) continue;
+      const located = locateBlueprint(draft, blueprint.id);
+      if (!located) continue;
+      const dir = path.join(draft.mappingDir, sanitizeSegment(located.category.name), sanitizeSegment(located.subcategory.name));
+      mappingWriteBacks.push({
+        fromSbp: gamePath(gameDir, blueprint.stem, BLUEPRINT_EXT),
+        toSbp: path.join(dir, `${blueprint.stem}${BLUEPRINT_EXT}`),
+        fromCfg: blueprint.hasCfg ? gamePath(gameDir, blueprint.stem, BLUEPRINT_CONFIG_EXT) : null,
+        toCfg: blueprint.hasCfg ? path.join(dir, `${blueprint.stem}${BLUEPRINT_CONFIG_EXT}`) : null
+      });
+    }
+  }
+
+  return { copies, renames, deletions, removedStems, saveOnly, iconWrites, mappingWriteBacks, notices };
 }
 
 /** Build the confirm-page preview for a draft. */
@@ -139,9 +166,10 @@ export async function planDraftApply(draft: DraftTree): Promise<DraftApplyPlan> 
     }
   }
 
-  const iconUpdates = categoryPlan
-    .filter((entry) => entry.iconId !== null && entry.iconId !== undefined)
-    .map((entry) => ({ category: entry.category, iconId: entry.iconId as number }));
+  // Only report categories whose icon actually changed (iconId differs from what was read from the save).
+  const iconUpdates = draft.categories
+    .filter((category) => !isRecycleCategory(category) && category.iconId !== null && category.iconId !== (category.originalIconId ?? null))
+    .map((category) => ({ category: category.name.trim(), iconId: category.iconId as number }));
 
   const hasError = notices.some((notice) => notice.severity === 'error');
   return {
@@ -154,6 +182,7 @@ export async function planDraftApply(draft: DraftTree): Promise<DraftApplyPlan> 
     renames: ops.renames.map((rename) => ({ from: rename.fromSbp, to: rename.toSbp, cfg: Boolean(rename.toCfg) })),
     deletions: ops.deletions.map((deletion) => deletion.sbp),
     saveOnly: ops.saveOnly,
+    writeBacks: ops.mappingWriteBacks.map((wb) => wb.toSbp),
     notices,
     canApply: !hasError && Boolean(draft.savePath) && capabilityReason === null
   };
@@ -239,6 +268,19 @@ export async function executeDraftImport(options: DraftApplyOptions): Promise<Im
   for (const write of ops.iconWrites) {
     if (await pathExists(write.cfgPath)) {
       await writeBlueprintIconId(write.cfgPath, write.iconId);
+    }
+  }
+
+  // Write-backs into the external mapping folder (kept manager-only blueprints).
+  for (const wb of ops.mappingWriteBacks) {
+    if (await pathExists(wb.fromSbp)) {
+      await ensureDir(path.dirname(wb.toSbp));
+      await fs.copyFile(wb.fromSbp, wb.toSbp);
+      copiedFiles.push(wb.toSbp);
+      if (wb.fromCfg && wb.toCfg && (await pathExists(wb.fromCfg))) {
+        await fs.copyFile(wb.fromCfg, wb.toCfg);
+        copiedFiles.push(wb.toCfg);
+      }
     }
   }
 

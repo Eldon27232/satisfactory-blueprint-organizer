@@ -99,6 +99,8 @@
   "filesToDelete": "Files to delete (recycle bin)",
   "categoriesToUpdate": "Categories to update",
   "iconUpdatesLabel": "Icons to update",
+  "writeBacksLabel": "Write back to mapping",
+  "viewChanges": "View changes",
   "saveOnlyLabel": "Save-only blueprints (no file, category only)",
   "gameClosedConfirm": "I have closed the Satisfactory game and dedicated server",
   "cancel": "Cancel",

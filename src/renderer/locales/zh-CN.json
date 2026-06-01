@@ -99,6 +99,8 @@
   "filesToDelete": "要删除的文件（回收站）",
   "categoriesToUpdate": "要更新的分类",
   "iconUpdatesLabel": "要更新的图标",
+  "writeBacksLabel": "写回外部映射夹",
+  "viewChanges": "查看本次改动",
   "saveOnlyLabel": "仅存档蓝图（无文件，仅改分类）",
   "gameClosedConfirm": "我已关闭 Satisfactory 游戏和专用服务器",
   "cancel": "取消",

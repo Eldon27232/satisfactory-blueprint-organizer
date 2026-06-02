@@ -3,6 +3,7 @@
 
 # Binary assets — never normalize
 *.png binary
+*.webp binary
 *.svg binary
 *.sav binary
 *.sbp binary

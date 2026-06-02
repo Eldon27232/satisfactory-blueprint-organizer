@@ -6,7 +6,7 @@ describe('blueprint icon library', () => {
     expect(BLUEPRINT_ICON_LIBRARY.total).toBe(876);
     expect(getBlueprintIconById(45)?.texture).toContain('IconDesc_ConveyorSplitter_512');
     expect(getBlueprintIconById(782)?.localizationKey).toBe('Icons/QuestionMark');
-    expect(getBlueprintIconById(782)?.imagePath).toBe('/blueprint-icons/0782.png');
+    expect(getBlueprintIconById(782)?.imagePath).toBe('/blueprint-icons/0782.webp');
   });
 
   it('exposes visible icons for future category icon selection', () => {

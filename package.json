@@ -12,11 +12,11 @@
     "test": "vitest run",
     "dump-save": "tsx scripts/dump-save.ts",
     "scan-blueprint-structure": "tsx scripts/scan-blueprint-structure.ts",
-    "diff-save-blueprint-category": "tsx scripts/diff-save-blueprint-category.ts"
+    "diff-save-blueprint-category": "tsx scripts/diff-save-blueprint-category.ts",
+    "compress-icons": "tsx scripts/compress-blueprint-icons.ts"
   },
   "dependencies": {
     "@etothepii/satisfactory-file-parser": "^4.1.1",
-    "@vitejs/plugin-react": "^5.0.0",
     "electron-is-dev": "^3.0.1",
     "electron-updater": "^6.8.3",
     "fflate": "^0.8.3",
@@ -28,10 +28,12 @@
     "@types/node": "^22.10.1",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^5.0.0",
     "electron": "^33.2.1",
     "electron-builder": "^25.1.8",
     "electron-vite": "^2.3.0",
     "rcedit": "^5.0.2",
+    "sharp": "^0.34.5",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
     "vite": "^5.4.11",

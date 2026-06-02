@@ -21,3 +21,9 @@ Thumbs.db
 
 # Runtime app-data (dirty flags) written when running in dev
 organizer-state.json
+
+# Runtime import staging (extracted/copied blueprints awaiting apply)
+.import-staging/
+
+# 本机私有发布配置（VPS 连接信息等），勿提交
+release.local.env

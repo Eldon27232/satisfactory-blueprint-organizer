@@ -10,14 +10,19 @@ const path = require('node:path');
 const KEEP_LOCALES = new Set(['en-US.pak', 'zh-CN.pak']);
 
 exports.default = async function afterPack(context) {
-  if (context.electronPlatformName !== 'win32') return;
-  const exe = path.join(context.appOutDir, `${context.packager.appInfo.productFilename}.exe`);
-  const rcedit = path.resolve('node_modules/rcedit/bin/rcedit-x64.exe');
-  const icon = path.resolve('build/icon.ico');
-  execFileSync(rcedit, [exe, '--set-icon', icon], { stdio: 'inherit' });
-  console.log(`[afterPack] 已将图标写入 ${exe}`);
+  const platform = context.electronPlatformName; // 'win32' | 'linux' | 'darwin'
 
-  // 裁剪 Chromium 多余语言包。
+  // 仅 Windows：用 rcedit 把图标写进 exe（Linux 图标由 electron-builder 处理）。
+  if (platform === 'win32') {
+    const exe = path.join(context.appOutDir, `${context.packager.appInfo.productFilename}.exe`);
+    const rcedit = path.resolve('node_modules/rcedit/bin/rcedit-x64.exe');
+    const icon = path.resolve('build/icon.ico');
+    execFileSync(rcedit, [exe, '--set-icon', icon], { stdio: 'inherit' });
+    console.log(`[afterPack] 已将图标写入 ${exe}`);
+  }
+
+  // Windows 与 Linux 都裁剪 Chromium 多余语言包（mac 的 .pak 在 .lproj 内，结构不同，跳过）。
+  if (platform !== 'win32' && platform !== 'linux') return;
   const localesDir = path.join(context.appOutDir, 'locales');
   if (fs.existsSync(localesDir)) {
     let removed = 0;

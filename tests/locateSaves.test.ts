@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   autoLocateSaveGames,
   deriveSaveGamesRoot,
+  findProtonSaveGamesRoots,
   getDefaultSaveGamesRoot,
   listSavesInAccountDir,
   locateSaveCandidates,
@@ -77,12 +78,12 @@ describe('auto-locate flow', () => {
     else process.env.LOCALAPPDATA = originalLocalAppData;
   });
 
-  it('getDefaultSaveGamesRoot builds the fixed path from LOCALAPPDATA', () => {
+  it.runIf(process.platform === 'win32')('getDefaultSaveGamesRoot builds the fixed path from LOCALAPPDATA', () => {
     process.env.LOCALAPPDATA = tempRoot;
     expect(getDefaultSaveGamesRoot()).toBe(path.join(tempRoot, 'FactoryGame', 'Saved', 'SaveGames'));
   });
 
-  it('autoLocateSaveGames lists account dirs under the fixed root, excluding blueprints', async () => {
+  it.runIf(process.platform === 'win32')('autoLocateSaveGames lists account dirs under the fixed root, excluding blueprints', async () => {
     const saveRoot = path.join(tempRoot, 'FactoryGame', 'Saved', 'SaveGames');
     await fs.mkdir(path.join(saveRoot, '76561199600411695'), { recursive: true });
     await fs.mkdir(path.join(saveRoot, 'blueprints', 'SessionA'), { recursive: true });
@@ -93,7 +94,7 @@ describe('auto-locate flow', () => {
     expect(result.accountDirs.map((dir) => path.basename(dir))).toEqual(['76561199600411695']);
   });
 
-  it('autoLocateSaveGames reports rootExists=false when the folder is missing', async () => {
+  it.runIf(process.platform === 'win32')('autoLocateSaveGames reports rootExists=false when the folder is missing', async () => {
     process.env.LOCALAPPDATA = path.join(tempRoot, 'does-not-exist');
     const result = await autoLocateSaveGames();
     expect(result.rootExists).toBe(false);
@@ -120,5 +121,34 @@ describe('auto-locate flow', () => {
     expect(result.sessionName).toBeNull();
     expect(result.blueprintDir).toBeNull();
     expect(result.notices.some((notice) => notice.code === 'SESSION_NAME_UNRESOLVED')).toBe(true);
+  });
+});
+
+// Linux/Proton 存档定位（不依赖真实 process.platform / Steam 安装，喂临时目录结构）。
+describe('Linux/Proton save discovery', () => {
+  const PROTON_REL = path.join('steamapps', 'compatdata', '526870', 'pfx', 'drive_c', 'users', 'steamuser', 'AppData', 'Local', 'FactoryGame', 'Saved', 'SaveGames');
+
+  it('finds the Proton SaveGames dir under a Steam library', async () => {
+    const lib = path.join(tempRoot, 'SteamA');
+    const saveRoot = path.join(lib, PROTON_REL);
+    await fs.mkdir(saveRoot, { recursive: true });
+    expect(await findProtonSaveGamesRoots([lib])).toEqual([saveRoot]);
+  });
+
+  it('discovers extra libraries via libraryfolders.vdf', async () => {
+    const main = path.join(tempRoot, 'SteamMain');
+    const extra = path.join(tempRoot, 'SteamExtra');
+    const extraSave = path.join(extra, PROTON_REL);
+    await fs.mkdir(extraSave, { recursive: true });
+    await fs.mkdir(path.join(main, 'steamapps'), { recursive: true });
+    await fs.writeFile(
+      path.join(main, 'steamapps', 'libraryfolders.vdf'),
+      `"libraryfolders"\n{\n  "0"\n  {\n    "path"  "${extra.replace(/\\/g, '\\\\')}"\n  }\n}\n`
+    );
+    expect(await findProtonSaveGamesRoots([main])).toContain(extraSave);
+  });
+
+  it('returns empty when no Proton prefix exists', async () => {
+    expect(await findProtonSaveGamesRoots([path.join(tempRoot, 'nope')])).toEqual([]);
   });
 });

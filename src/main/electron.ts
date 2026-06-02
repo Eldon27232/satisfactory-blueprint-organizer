@@ -7,10 +7,11 @@ import { registerUpdater } from './updater';
 
 let mainWindow: BrowserWindow | null = null;
 
-// 运行时窗口/任务栏图标。打包后图标作为 extraResources 放在 resources/icon.ico；
-// 开发时指向项目 build/icon.ico（__dirname 为 out/main）。
+// 运行时窗口/任务栏图标。Windows 用 .ico，Linux 用 .png（两者都作为 extraResources 放进
+// resources/）。打包后从 resources 取，开发时指向项目 build/（__dirname 为 out/main）。
 function appIconPath(): string {
-  return app.isPackaged ? path.join(process.resourcesPath, 'icon.ico') : path.join(__dirname, '../../build/icon.ico');
+  const iconFile = process.platform === 'win32' ? 'icon.ico' : 'icon.png';
+  return app.isPackaged ? path.join(process.resourcesPath, iconFile) : path.join(__dirname, '../../build', iconFile);
 }
 
 function createWindow(): void {

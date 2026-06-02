@@ -19,9 +19,98 @@ const SKIP_RECURSIVE_DIR_NAMES = new Set(['blueprints', 'backup', 'backups', 're
 
 /** The fixed Windows SaveGames root: %LOCALAPPDATA%\FactoryGame\Saved\SaveGames (no hard-coded user name). */
 export function getDefaultSaveGamesRoot(): string | null {
+  // 非 Windows（Linux）的存档根需要异步探测 Proton prefix，走 listSaveGameLocations。
+  if (process.platform !== 'win32') return null;
   const localAppData = process.env.LOCALAPPDATA;
   if (!localAppData) return null;
   return path.join(localAppData, 'FactoryGame', 'Saved', 'SaveGames');
+}
+
+// ---------------------------------------------------------------------------
+// Linux / Proton save-location discovery
+//
+// Satisfactory has no native Linux build; Linux players run it through Steam
+// Proton, so the Windows save layout lives inside the game's Proton prefix:
+//   <SteamLibrary>/steamapps/compatdata/526870/pfx/drive_c/users/steamuser/
+//     AppData/Local/FactoryGame/Saved/SaveGames
+// We probe the common Steam roots (incl. Flatpak) and every library listed in
+// libraryfolders.vdf, since the game may be installed on any library.
+// ---------------------------------------------------------------------------
+
+const SATISFACTORY_STEAM_APP_ID = '526870';
+
+function protonSaveGamesPath(steamLibrary: string): string {
+  return path.join(
+    steamLibrary,
+    'steamapps',
+    'compatdata',
+    SATISFACTORY_STEAM_APP_ID,
+    'pfx',
+    'drive_c',
+    'users',
+    'steamuser',
+    'AppData',
+    'Local',
+    'FactoryGame',
+    'Saved',
+    'SaveGames'
+  );
+}
+
+/** Common Steam install roots on Linux, including the Flatpak location. */
+function defaultSteamRoots(): string[] {
+  const home = process.env.HOME;
+  if (!home) return [];
+  return [
+    path.join(home, '.steam', 'steam'),
+    path.join(home, '.steam', 'root'),
+    path.join(home, '.local', 'share', 'Steam'),
+    path.join(home, '.var', 'app', 'com.valvesoftware.Steam', 'data', 'Steam')
+  ];
+}
+
+/** A Steam root plus every additional library registered in its libraryfolders.vdf. */
+async function listSteamLibraries(steamRoot: string): Promise<string[]> {
+  const libraries = new Set<string>();
+  if (await pathExists(steamRoot)) libraries.add(steamRoot);
+  for (const vdf of [path.join(steamRoot, 'steamapps', 'libraryfolders.vdf'), path.join(steamRoot, 'config', 'libraryfolders.vdf')]) {
+    try {
+      const text = await fs.readFile(vdf, 'utf8');
+      for (const match of text.matchAll(/"path"\s*"((?:[^"\\]|\\.)*)"/g)) {
+        libraries.add(match[1].replace(/\\\\/g, '\\'));
+      }
+    } catch {
+      // ignore: vdf 不存在或读不了
+    }
+  }
+  return [...libraries];
+}
+
+/**
+ * Find every existing Satisfactory (Proton) SaveGames dir across the given Steam roots.
+ * Exported so tests can feed a temp Steam tree without depending on process.platform/HOME.
+ */
+export async function findProtonSaveGamesRoots(steamRoots: string[]): Promise<string[]> {
+  const found: string[] = [];
+  const seen = new Set<string>();
+  for (const steamRoot of steamRoots) {
+    for (const library of await listSteamLibraries(steamRoot)) {
+      const root = protonSaveGamesPath(library);
+      if (!seen.has(root) && (await pathExists(root))) {
+        seen.add(root);
+        found.push(root);
+      }
+    }
+  }
+  return found;
+}
+
+async function listLinuxSaveGameLocations(): Promise<SaveGameLocation[]> {
+  const roots = await findProtonSaveGamesRoots(defaultSteamRoots());
+  return roots.map((saveGamesRoot, index) => ({
+    userName: roots.length > 1 ? `Proton ${index + 1}` : 'Proton',
+    saveGamesRoot
+  }));
 }
 
 /**
@@ -29,6 +118,8 @@ export function getDefaultSaveGamesRoot(): string | null {
  * derived from %LOCALAPPDATA% (so no path is hard-coded). The current user is listed first.
  */
 export async function listSaveGameLocations(): Promise<SaveGameLocation[]> {
+  if (process.platform === 'linux') return listLinuxSaveGameLocations();
+  // Windows：枚举 C:\Users\* 下各用户的 AppData\Local\FactoryGame\...（其它平台无 LOCALAPPDATA → 空）。
   const localAppData = process.env.LOCALAPPDATA;
   if (!localAppData) return [];
   const userHome = path.dirname(path.dirname(localAppData)); // e.g. C:\Users\27232
@@ -71,7 +162,8 @@ export async function listAccountDirsInRoot(saveGamesRoot: string): Promise<stri
 
 /** Auto-locate the SaveGames root and list its account folders (excluding `blueprints`). */
 export async function autoLocateSaveGames(): Promise<AutoLocateResult> {
-  const saveGamesRoot = getDefaultSaveGamesRoot();
+  // Windows 直接用固定根；Linux（Proton）经 listSaveGameLocations 探测后取第一个。
+  const saveGamesRoot = process.platform === 'win32' ? getDefaultSaveGamesRoot() : (await listSaveGameLocations())[0]?.saveGamesRoot ?? null;
   if (!saveGamesRoot || !(await pathExists(saveGamesRoot))) {
     return { saveGamesRoot, rootExists: false, accountDirs: [] };
   }

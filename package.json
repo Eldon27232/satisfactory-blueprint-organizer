@@ -1,6 +1,6 @@
 {
   "name": "satisfactory-blueprint-organizer",
-  "version": "1.1.3",
+  "version": "1.1.4",
   "private": true,
   "type": "module",
   "main": "out/main/electron.js",
@@ -41,6 +41,9 @@
   },
   "build": {
     "afterPack": "scripts/afterPack.cjs",
+    "releaseInfo": {
+      "releaseNotesFile": "RELEASE_NOTES.md"
+    },
     "appId": "dev.local.satisfactory-blueprint-organizer",
     "productName": "Satisfactory Blueprint Organizer",
     "directories": {

@@ -6,6 +6,7 @@ import { availableLanguages, detectLanguage, saveLanguage, translate, type Langu
 import { ManagerView } from './ManagerView';
 import { Titlebar } from './Titlebar';
 import { computeMappingDiff, mergeMappingDiff, type MappingDiff } from '../shared/mappingDiff';
+import { pickReleaseNotes } from '../shared/releaseNotes';
 import { MappingDiffDialog } from './MappingDiffDialog';
 
 type View = 'setup' | 'manager';
@@ -610,17 +611,8 @@ function baseName(targetPath: string): string {
   return targetPath.replace(/[\\/]+$/, '').split(/[\\/]/).pop() ?? targetPath;
 }
 
-// 更新公告按界面语言取对应区块。约定 release body 用二级标题分段：
-// "## 简体中文" 段与 "## English" 段。中文界面取中文段、其它取英文段；无标记则回退显示全文。
-function pickReleaseNotes(notes: string, language: string): string {
-  const section = (header: RegExp): string | undefined => header.exec(notes)?.[1]?.trim();
-  const zh = section(/##\s*(?:简体中文|中文)\s*\r?\n([\s\S]*?)(?=\r?\n##\s|$)/i);
-  const en = section(/##\s*English\s*\r?\n([\s\S]*?)(?=\r?\n##\s|$)/i);
-  const preferZh = language.toLowerCase().startsWith('zh');
-  return (preferZh ? zh ?? en : en ?? zh) ?? notes.trim();
-}
-
 // 极简 markdown 渲染：标题（#）、无序列表（-/*）、普通段落。够更新公告用，不引入依赖。
+// 公告文本已先经 pickReleaseNotes 归一化（HTML→Markdown 风格）。
 function renderReleaseNotes(text: string): JSX.Element {
   return (
     <div className="update-notes">

@@ -8,7 +8,9 @@ import {
   deleteSubcategoryWithContents,
   getRecycledBlueprintIdSet,
   makeId,
+  mergeSubcategoryIntoUnnamed,
   moveBlueprints,
+  moveSubcategoryToCategory,
   nextAvailableStem,
   recycleBlueprints,
   renameBlueprint,
@@ -116,6 +118,13 @@ describe('draftModel validation', () => {
     expect(result.conflictBlueprintIds.has('a')).toBe(true);
   });
 
+  it('treats spaces and hyphens in stems as legal (regression: 556 false positives)', () => {
+    const renamed = renameBlueprint(sampleTree(), 'a', 'Storage Mk 2-A');
+    const result = validateDraft(renamed);
+    expect(result.conflictBlueprintIds.has('a')).toBe(false);
+    expect(result.notices.some((notice) => notice.code === 'ILLEGAL_BLUEPRINT_NAME')).toBe(false);
+  });
+
   it('passes a clean tree', () => {
     expect(validateDraft(sampleTree()).hasBlockingError).toBe(false);
   });
@@ -145,16 +154,35 @@ describe('draftModel recycle / paste / reorder', () => {
     expect(nextAvailableStem('Bar', taken)).toBe('Bar');
   });
 
-  it('reorders categories and keeps the recycle bin last', () => {
-    const recycled = recycleBlueprints(sampleTree(), []); // creates an empty recycle bin
-    const reordered = reorderCategory(recycled, 'cat2', 'cat1'); // move Logistics before Power
-    expect(reordered.categories.map((c) => c.id).slice(0, 2)).toEqual(['cat2', 'cat1']);
-    expect(reordered.categories[reordered.categories.length - 1].name).toBe('回收站');
+  it('reorders categories', () => {
+    const reordered = reorderCategory(sampleTree(), 'cat2', 'cat1'); // move Logistics before Power
+    expect(reordered.categories.map((c) => c.id)).toEqual(['cat2', 'cat1']);
   });
 
   it('reorders subcategories within a category', () => {
     const reordered = reorderSubcategory(sampleTree(), 'sub2', 'sub1'); // Fuel before Coal
     expect(reordered.categories[0].subcategories.map((s) => s.id)).toEqual(['sub2', 'sub1']);
+  });
+
+  it('re-parents a subcategory to another category (drop on header), appending at the end', () => {
+    const moved = moveSubcategoryToCategory(sampleTree(), 'sub3', 'cat1'); // Belts (Logistics) -> Power
+    const power = moved.categories.find((category) => category.id === 'cat1')!;
+    const logistics = moved.categories.find((category) => category.id === 'cat2')!;
+    expect(power.subcategories.map((s) => s.id)).toEqual(['sub1', 'sub2', 'sub3']); // appended last
+    expect(logistics.subcategories.map((s) => s.id)).not.toContain('sub3');
+    expect(power.subcategories.find((s) => s.id === 'sub3')!.blueprintIds).toEqual(['c']); // blueprint rides along
+  });
+
+  it('re-parenting into the same category is a no-op', () => {
+    const tree = sampleTree();
+    expect(moveSubcategoryToCategory(tree, 'sub1', 'cat1')).toBe(tree);
+  });
+
+  it('dissolves a subcategory into the category 未命名 sub (delete-subcategory → keep in category)', () => {
+    const next = mergeSubcategoryIntoUnnamed(sampleTree(), 'sub1'); // Coal(a,b) → Power/未命名
+    const power = next.categories.find((c) => c.id === 'cat1')!;
+    expect(power.subcategories.some((s) => s.id === 'sub1')).toBe(false);
+    expect(power.subcategories.find((s) => s.name === '未命名')!.blueprintIds).toEqual(['a', 'b']);
   });
 });
 

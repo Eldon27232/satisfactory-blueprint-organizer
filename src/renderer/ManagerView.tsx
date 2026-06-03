@@ -1,6 +1,6 @@
-import { AlertTriangle, CheckSquare, ChevronDown, ChevronRight, ClipboardPaste, Copy, FileArchive, FolderInput, FolderPlus, ImageIcon, Layers, Minus, Plus, Scissors, Trash2 } from 'lucide-react';
+import { AlertTriangle, CheckSquare, ClipboardPaste, Copy, FileArchive, FolderInput, Layers, Plus, Scissors, Trash2 } from 'lucide-react';
 import { useMemo, useRef, useState } from 'react';
-import { getBlueprintIconById, getBlueprintIconDisplayName } from '../shared/blueprintIcons';
+import { getBlueprintIconById } from '../shared/blueprintIcons';
 import {
   addBlueprints,
   allStemsLower,
@@ -9,21 +9,22 @@ import {
   createSubcategory,
   deleteCategory,
   deleteSubcategory,
-  deleteSubcategoryWithContents,
   getRecycledBlueprintIdSet,
-  isRecycleCategory,
-  locateBlueprint,
-  makeId,
-  mergeImportedBlueprints,
+  mergeSubcategoryIntoUnnamed,
   moveBlueprints,
+  moveSubcategoryToCategory,
   nextAvailableStem,
   recycleBlueprints,
-  RECYCLE_BIN_ID,
+  recycleCategory,
+  recycleSubcategory,
   renameBlueprint,
   renameCategory,
   renameSubcategory,
   reorderCategory,
   reorderSubcategory,
+  restoreRecycledBlueprints,
+  restoreRecycledCategory,
+  restoreRecycledSubcategory,
   setBlueprintIcon,
   setCategoryIcon,
   validateDraft,
@@ -37,8 +38,14 @@ import { ConfirmDialog } from './ConfirmDialog';
 import { IconImage, IconPicker } from './IconPicker';
 import { translate, type Language } from './i18n';
 import type { Notice } from '../shared/types';
+import { computeVisibleBlueprints, makeCopyBlueprint, resolvePasteTargetSubId, uniqueName, type Selection } from './manager/managerSelectors';
+import { CategoryRow } from './manager/CategoryRow';
+import { RecycleBinPanel } from './manager/RecycleBinPanel';
+import { RecycleBinBrowser } from './manager/RecycleBinBrowser';
+import { Inspector } from './manager/Inspector';
+import { useBlueprintImports } from './manager/useBlueprintImports';
+import { ZipImportWizard } from './manager/ZipImportWizard';
 
-type Selection = { type: 'category'; id: string } | { type: 'subcategory'; id: string } | null;
 type DragState = { kind: 'blueprints'; ids: string[] } | { kind: 'category'; id: string } | { kind: 'subcategory'; id: string } | null;
 type Clipboard = { ids: string[]; mode: 'copy' | 'cut' } | null;
 
@@ -60,18 +67,28 @@ export function ManagerView(props: ManagerViewProps): JSX.Element {
   const [selection, setSelection] = useState<Selection>(null);
   const [selectedBlueprintIds, setSelectedBlueprintIds] = useState<string[]>([]);
   const [search, setSearch] = useState('');
-  const [expanded, setExpanded] = useState<Set<string>>(() => new Set(draft.categories.map((category) => category.id)));
+  // 默认全部收起：进入管理界面时所有分类折叠，用户按需展开。
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const [iconPickerCategoryId, setIconPickerCategoryId] = useState<string | null>(null);
   const [iconPickerBlueprintId, setIconPickerBlueprintId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState('');
-  const [pendingDelete, setPendingDelete] = useState<{ id: string; name: string; count: number } | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<{ kind: 'category' | 'subcategory'; id: string; name: string; count: number } | null>(null);
+  // 选中回收站时，中间区切换成分层浏览器（Windows 文件夹式）而非蓝图网格。
+  const [showRecycle, setShowRecycle] = useState(false);
   const [confirmPlan, setConfirmPlan] = useState<DraftApplyPlan | null>(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
   const [clipboard, setClipboard] = useState<Clipboard>(null);
-  const [importNotices, setImportNotices] = useState<Notice[]>([]);
-  const [showNotices, setShowNotices] = useState(false);
   const [confirmLeave, setConfirmLeave] = useState(false);
   const drag = useRef<DragState>(null);
+
+  function update(next: DraftTree): void {
+    setDeleteError('');
+    setDraft({ ...next, dirty: true });
+    if (next.savePath) void window.sbc?.writeDirtyFlag(next.savePath, true);
+  }
+
+  // 导入相关状态与逻辑（拖入 / 选 zip / 散文件）封装在 hook 内，组件只消费其结果。
+  const { importNotices, showNotices, setShowNotices, onDropFiles, onClickImportZip, zipWizard, resolveZipWizard, cancelZipWizard } = useBlueprintImports({ draft, selection, update });
 
   const validation = useMemo(() => validateDraft(draft), [draft]);
   const conflicts = validation.conflictBlueprintIds;
@@ -82,23 +99,18 @@ export function ManagerView(props: ManagerViewProps): JSX.Element {
 
   const visibleBlueprints = useMemo(() => computeVisibleBlueprints(draft, selection, search, recycledIds), [draft, selection, search, recycledIds]);
 
-  // Recycle bin is a draft-only category; render it as a fixed dock, not in the scrolling tree.
-  const treeCategories = useMemo(() => draft.categories.filter((category) => !isRecycleCategory(category)), [draft]);
-  const recycleBin = useMemo(() => draft.categories.find(isRecycleCategory), [draft]);
-  const recycleBinSelected = selection?.type === 'category' && selection.id === RECYCLE_BIN_ID;
+  // 回收站是独立子森林（draft.recycleBin），渲染为底部固定 dock；选中后中间区切换成分层浏览器。
+  const treeCategories = draft.categories;
+  const recycleBin = draft.recycleBin ?? [];
+  const recycleBinCount = recycledIds.size;
 
   const pasteTargetSubId = resolvePasteTargetSubId(draft, selection);
   const canPaste = Boolean(clipboard && clipboard.ids.length > 0 && pasteTargetSubId);
 
-  function update(next: DraftTree): void {
-    setDeleteError('');
-    setDraft({ ...next, dirty: true });
-    if (next.savePath) void window.sbc?.writeDirtyFlag(next.savePath, true);
-  }
-
   function selectNode(node: Selection): void {
     setSelection(node);
     setSelectedBlueprintIds([]);
+    setShowRecycle(false);
   }
 
   function toggleExpanded(categoryId: string): void {
@@ -140,92 +152,6 @@ export function ManagerView(props: ManagerViewProps): JSX.Element {
     setSelectedBlueprintIds(allSelected ? [] : ids);
   }
 
-  // 从系统拖入文件：.zip 走压缩包导入（按内部结构建分类/子分类），.sbp/.sbpcfg 走散文件导入
-  // （进当前选中的子分类）。两者可同时拖入。
-  async function onDropFiles(event: React.DragEvent<HTMLElement>): Promise<void> {
-    if (event.dataTransfer.files.length === 0) return; // 内部拖拽（移动蓝图）不在此处理
-    event.preventDefault();
-    const paths = Array.from(event.dataTransfer.files)
-      .map((file) => window.sbc?.getPathForFile(file))
-      .filter((value): value is string => Boolean(value));
-    if (paths.length === 0) return;
-    const zipPaths = paths.filter((p) => p.toLowerCase().endsWith('.zip'));
-    const looseFiles = paths.filter((p) => {
-      const lower = p.toLowerCase();
-      return lower.endsWith('.sbp') || lower.endsWith('.sbpcfg');
-    });
-    if (zipPaths.length > 0) await importZipFromPaths(zipPaths);
-    if (looseFiles.length > 0) await importLooseFiles(looseFiles);
-  }
-
-  // .sbp/.sbpcfg 散文件导入：必须先选中一个子分类；成对校验，缺一不导入并计入 error。
-  async function importLooseFiles(paths: string[]): Promise<void> {
-    if (selection?.type !== 'subcategory') {
-      setImportNotices([{ severity: 'error', code: 'NO_SUBCATEGORY', message: '请先在左侧选择一个子分类，再把蓝图文件拖进来。' }]);
-      setShowNotices(true);
-      return;
-    }
-    const sbc = window.sbc;
-    if (!sbc) return;
-    const targetSubId = selection.id;
-    const result = await sbc.importDroppedBlueprints(paths);
-    if (result.blueprints.length > 0) {
-      const taken = allStemsLower(draft);
-      const additions: DraftBlueprint[] = result.blueprints.map((item) => {
-        const stem = nextAvailableStem(item.stem, taken);
-        taken.add(stem.trim().toLowerCase());
-        return {
-          id: makeId('bp'),
-          stem,
-          originalStem: item.stem,
-          origin: 'external',
-          sourceSbpPath: item.sbpPath,
-          sourceCfgPath: item.cfgPath,
-          hasSbp: true,
-          hasCfg: true,
-          iconId: item.iconId,
-          originalIconId: item.iconId,
-          warnings: []
-        };
-      });
-      update(addBlueprints(draft, additions, targetSubId));
-    }
-    setImportNotices(result.errors);
-    if (result.errors.length > 0) setShowNotices(true);
-  }
-
-  // 压缩包导入：解压（主进程）→ 按内部文件夹深度映射分类/子分类 → 并入当前草稿。
-  async function importZipFromPaths(zipPaths: string[]): Promise<void> {
-    const sbc = window.sbc;
-    if (!sbc) return;
-    const result = await sbc.importZipBlueprints(zipPaths);
-    if (result.entries.length > 0) {
-      update(
-        mergeImportedBlueprints(
-          draft,
-          result.entries.map((entry) => ({
-            category: entry.category,
-            subcategory: entry.subcategory,
-            stem: entry.stem,
-            sourceSbpPath: entry.sbpPath,
-            sourceCfgPath: entry.cfgPath,
-            iconId: entry.iconId
-          }))
-        )
-      );
-    }
-    setImportNotices(result.notices);
-    if (result.notices.length > 0) setShowNotices(true);
-  }
-
-  // 点击“导入压缩包”按钮：选 zip → 导入。
-  async function onClickImportZip(): Promise<void> {
-    const sbc = window.sbc;
-    if (!sbc) return;
-    const zipPaths = await sbc.chooseZipFiles();
-    if (zipPaths.length > 0) await importZipFromPaths(zipPaths);
-  }
-
   // ---- drag & drop ----
   function onDragStartBlueprint(event: React.DragEvent, blueprintId: string): void {
     const ids = selectedBlueprintIds.includes(blueprintId) ? selectedBlueprintIds : [blueprintId];
@@ -257,7 +183,10 @@ export function ManagerView(props: ManagerViewProps): JSX.Element {
         update(moveBlueprints(draft, state.ids, target.id));
         setSelectedBlueprintIds([]);
       }
-    } else if (state.kind === 'category' && !isRecycleCategory(category)) {
+    } else if (state.kind === 'subcategory') {
+      // 拖子目录到分类标题：归属到该分类（挂末尾）。拖到某个子目录上则走 dropOnSubcategory 跨分类插入。
+      update(moveSubcategoryToCategory(draft, state.id, category.id));
+    } else if (state.kind === 'category') {
       update(reorderCategory(draft, state.id, category.id));
     }
   }
@@ -320,6 +249,7 @@ export function ManagerView(props: ManagerViewProps): JSX.Element {
     const updatedCategory = next.categories.find((item) => item.id === categoryId);
     const created = updatedCategory?.subcategories[updatedCategory.subcategories.length - 1];
     update(next);
+    setExpanded((previous) => new Set(previous).add(categoryId)); // 默认收起时也要展开父分类，否则新子分类不可见
     if (created) selectNode({ type: 'subcategory', id: created.id });
   }
 
@@ -333,6 +263,15 @@ export function ManagerView(props: ManagerViewProps): JSX.Element {
     selectNode(null);
   }
 
+  // 删目录：非空 → 二次确认后整个目录进回收站；空目录直接删除。
+  function requestDeleteCategory(categoryId: string): void {
+    const category = draft.categories.find((item) => item.id === categoryId);
+    if (!category) return;
+    const count = countBlueprintsInCategory(category);
+    if (count > 0) setPendingDelete({ kind: 'category', id: categoryId, name: category.name, count });
+    else removeCategory(categoryId);
+  }
+
   function removeSubcategory(subcategoryId: string): void {
     const result = deleteSubcategory(draft, subcategoryId);
     if (!result.ok) {
@@ -343,19 +282,46 @@ export function ManagerView(props: ManagerViewProps): JSX.Element {
     selectNode(null);
   }
 
+  // 删子目录：非空 → 二选一弹窗（并进本目录·未命名 / 进回收站）；空目录直接删。
   function requestDeleteSubcategory(subcategory: DraftSubcategory): void {
     if (subcategory.blueprintIds.length > 0) {
-      setPendingDelete({ id: subcategory.id, name: subcategory.name, count: subcategory.blueprintIds.length });
+      setPendingDelete({ kind: 'subcategory', id: subcategory.id, name: subcategory.name, count: subcategory.blueprintIds.length });
     } else {
       removeSubcategory(subcategory.id);
     }
   }
 
-  function confirmDeleteSubcategory(): void {
+  // 确认删除目录 → 整个目录（连子目录/蓝图）进回收站。
+  function confirmDeleteCategory(): void {
     if (!pendingDelete) return;
-    update(deleteSubcategoryWithContents(draft, pendingDelete.id));
+    update(recycleCategory(draft, pendingDelete.id));
     setPendingDelete(null);
     selectNode(null);
+  }
+
+  // 删子目录的两个动作：并进本目录·未命名子分类 / 进回收站。
+  function dissolveSubcategoryToUnnamed(): void {
+    if (!pendingDelete) return;
+    update(mergeSubcategoryIntoUnnamed(draft, pendingDelete.id));
+    setPendingDelete(null);
+    selectNode(null);
+  }
+  function recycleSubcategoryToBin(): void {
+    if (!pendingDelete) return;
+    update(recycleSubcategory(draft, pendingDelete.id));
+    setPendingDelete(null);
+    selectNode(null);
+  }
+
+  // ---- 回收站恢复（供 RecycleBinBrowser 调用）----
+  function restoreCategories(ids: string[]): void {
+    update(ids.reduce((tree, id) => restoreRecycledCategory(tree, id), draft));
+  }
+  function restoreSubcategories(items: Array<{ categoryId: string; subId: string }>): void {
+    update(items.reduce((tree, item) => restoreRecycledSubcategory(tree, item.categoryId, item.subId), draft));
+  }
+  function restoreBlueprintsFromBin(ids: string[]): void {
+    update(restoreRecycledBlueprints(draft, ids));
   }
 
   // ---- apply ----
@@ -459,9 +425,9 @@ export function ManagerView(props: ManagerViewProps): JSX.Element {
           <RecycleBinPanel
             label={t('recycleBin')}
             hint={t('recycleDockHint')}
-            count={recycleBin ? countBlueprintsInCategory(recycleBin) : 0}
-            selected={recycleBinSelected}
-            onSelect={() => selectNode({ type: 'category', id: RECYCLE_BIN_ID })}
+            count={recycleBinCount}
+            selected={showRecycle}
+            onSelect={() => { setShowRecycle(true); setSelection(null); setSelectedBlueprintIds([]); }}
             onDrop={dropOnRecycle}
           />
         </aside>
@@ -472,6 +438,17 @@ export function ManagerView(props: ManagerViewProps): JSX.Element {
           onDragOver={(event) => { if (event.dataTransfer.types.includes('Files')) event.preventDefault(); }}
           onDrop={(event) => void onDropFiles(event)}
         >
+          {showRecycle ? (
+            <RecycleBinBrowser
+              language={props.language}
+              recycleBin={recycleBin}
+              blueprints={draft.blueprints}
+              onRestoreCategories={restoreCategories}
+              onRestoreSubcategories={restoreSubcategories}
+              onRestoreBlueprints={restoreBlueprintsFromBin}
+            />
+          ) : (
+          <>
           <div className="pane-head">
             <input className="search" placeholder={t('searchBlueprints')} value={search} onChange={(event) => setSearch(event.target.value)} />
             {hasSelection && <small className="muted">{t('selectedCount').replace('{n}', String(selectedBlueprintIds.length))}</small>}
@@ -519,6 +496,8 @@ export function ManagerView(props: ManagerViewProps): JSX.Element {
             ))}
           </div>
           <div className="grid-foot muted">{t('moveHint')}</div>
+          </>
+          )}
         </section>
 
         {/* RIGHT: inspector */}
@@ -536,7 +515,7 @@ export function ManagerView(props: ManagerViewProps): JSX.Element {
               onRenameSubcategory={(id, name) => update(renameSubcategory(draft, id, name))}
               onRenameBlueprint={(id, stem) => update(renameBlueprint(draft, id, stem))}
               onAddSubcategory={addSubcategory}
-              onDeleteCategory={removeCategory}
+              onDeleteCategory={requestDeleteCategory}
               onDeleteSubcategory={requestDeleteSubcategory}
               onOpenIconPicker={setIconPickerCategoryId}
               onClearIcon={(id) => update(setCategoryIcon(draft, id, null))}
@@ -620,6 +599,19 @@ export function ManagerView(props: ManagerViewProps): JSX.Element {
         </div>
       )}
 
+      {zipWizard && (
+        <ZipImportWizard
+          key={`${zipWizard.zips[zipWizard.index].zipName}-${zipWizard.index}`}
+          language={props.language}
+          zipName={zipWizard.zips[zipWizard.index].zipName}
+          entries={zipWizard.zips[zipWizard.index].entries}
+          position={zipWizard.index + 1}
+          total={zipWizard.zips.length}
+          onConfirm={resolveZipWizard}
+          onCancel={cancelZipWizard}
+        />
+      )}
+
       {pendingDelete && (
         <div className="modal-backdrop" onClick={() => setPendingDelete(null)}>
           <div className="modal small-confirm" onClick={(event) => event.stopPropagation()}>
@@ -627,15 +619,30 @@ export function ManagerView(props: ManagerViewProps): JSX.Element {
               <h2>{t('delete')}</h2>
             </header>
             <div className="confirm-body">
-              <p>{t('deleteSubcategoryConfirm').replace('{name}', pendingDelete.name).replace('{n}', String(pendingDelete.count))}</p>
+              <p>
+                {(pendingDelete.kind === 'category' ? t('deleteCategoryConfirm') : t('deleteSubcategoryChoose'))
+                  .replace('{name}', pendingDelete.name)
+                  .replace('{n}', String(pendingDelete.count))}
+              </p>
             </div>
             <footer className="confirm-actions" style={{ padding: '14px 18px' }}>
               <button className="secondary" onClick={() => setPendingDelete(null)}>
                 {t('cancel')}
               </button>
-              <button className="danger" onClick={confirmDeleteSubcategory}>
-                {t('delete')}
-              </button>
+              {pendingDelete.kind === 'category' ? (
+                <button className="danger" onClick={confirmDeleteCategory}>
+                  {t('deleteToRecycle')}
+                </button>
+              ) : (
+                <>
+                  <button className="secondary" onClick={dissolveSubcategoryToUnnamed}>
+                    {t('dissolveToUnnamed')}
+                  </button>
+                  <button className="danger" onClick={recycleSubcategoryToBin}>
+                    {t('deleteToRecycle')}
+                  </button>
+                </>
+              )}
             </footer>
           </div>
         </div>
@@ -644,381 +651,5 @@ export function ManagerView(props: ManagerViewProps): JSX.Element {
   );
 }
 
-// ---------------------------------------------------------------------------
-
-function CategoryRow(props: {
-  category: DraftCategory;
-  expanded: boolean;
-  selection: Selection;
-  onToggle: () => void;
-  onSelectCategory: () => void;
-  onSelectSubcategory: (subcategoryId: string) => void;
-  onDragStartCategory: () => void;
-  onDragStartSubcategory: (subcategoryId: string) => void;
-  onDropCategory: () => void;
-  onDropSubcategory: (subcategoryId: string) => void;
-  onAddSubcategory: () => void;
-  onDeleteSubcategory: (subcategory: DraftSubcategory) => void;
-  addSubcategoryLabel: string;
-  deleteLabel: string;
-}): JSX.Element {
-  const [over, setOver] = useState<string | null>(null);
-  const recycle = isRecycleCategory(props.category);
-  const icon = props.category.iconId !== null ? getBlueprintIconById(props.category.iconId) : null;
-  const count = countBlueprintsInCategory(props.category);
-  const isSelected = props.selection?.type === 'category' && props.selection.id === props.category.id;
-
-  return (
-    <div className="tree-category">
-      <div
-        className={`tree-row category ${recycle ? 'recycle' : ''} ${isSelected ? 'selected' : ''} ${over === 'cat' ? 'drop-target' : ''}`}
-        draggable={!recycle}
-        onClick={props.onSelectCategory}
-        onDragStart={recycle ? undefined : props.onDragStartCategory}
-        onDragOver={(event) => {
-          event.preventDefault();
-          setOver('cat');
-        }}
-        onDragLeave={() => setOver(null)}
-        onDrop={(event) => {
-          event.preventDefault();
-          setOver(null);
-          props.onDropCategory();
-        }}
-      >
-        <button
-          className="tree-chevron"
-          onClick={(event) => {
-            event.stopPropagation();
-            props.onToggle();
-          }}
-        >
-          {props.expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-        </button>
-        {recycle ? <Trash2 size={18} className="recycle-icon" /> : <IconImage icon={icon} size={22} />}
-        <span className="tree-name">{props.category.name}</span>
-        <span className="tree-count">{count}</span>
-        {!recycle && (
-          <button
-            className="tree-action"
-            title={props.addSubcategoryLabel}
-            onClick={(event) => {
-              event.stopPropagation();
-              props.onAddSubcategory();
-            }}
-          >
-            <Plus size={14} />
-          </button>
-        )}
-      </div>
-      {props.expanded &&
-        props.category.subcategories.map((subcategory, index) => {
-          const subSelected = props.selection?.type === 'subcategory' && props.selection.id === subcategory.id;
-          return (
-            <div
-              key={subcategory.id}
-              className={`tree-row subcategory ${subSelected ? 'selected' : ''} ${over === subcategory.id ? 'drop-target' : ''}`}
-              draggable={!recycle}
-              onClick={() => props.onSelectSubcategory(subcategory.id)}
-              onDragStart={recycle ? undefined : (event) => { event.stopPropagation(); props.onDragStartSubcategory(subcategory.id); }}
-              onDragOver={(event) => {
-                event.preventDefault();
-                setOver(subcategory.id);
-              }}
-              onDragLeave={() => setOver(null)}
-              onDrop={(event) => {
-                event.preventDefault();
-                setOver(null);
-                props.onDropSubcategory(subcategory.id);
-              }}
-            >
-              <span className="sub-index">{index + 1}.</span>
-              <span className="tree-name">{subcategory.name}</span>
-              <span className="tree-count">{subcategory.blueprintIds.length}</span>
-              {!recycle && (
-                <button
-                  className="tree-action danger"
-                  title={props.deleteLabel}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    props.onDeleteSubcategory(subcategory);
-                  }}
-                >
-                  <Minus size={14} />
-                </button>
-              )}
-            </div>
-          );
-        })}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-
-function RecycleBinPanel(props: {
-  label: string;
-  hint: string;
-  count: number;
-  selected: boolean;
-  onSelect: () => void;
-  onDrop: () => void;
-}): JSX.Element {
-  const [over, setOver] = useState(false);
-  return (
-    <div
-      className={`recycle-dock ${props.selected ? 'selected' : ''} ${over ? 'drop-target' : ''}`}
-      title={props.hint}
-      onClick={props.onSelect}
-      onDragOver={(event) => {
-        event.preventDefault();
-        setOver(true);
-      }}
-      onDragLeave={() => setOver(false)}
-      onDrop={(event) => {
-        event.preventDefault();
-        setOver(false);
-        props.onDrop();
-      }}
-    >
-      <Trash2 size={18} className="recycle-icon" />
-      <span className="tree-name">{props.label}</span>
-      <span className="tree-count">{props.count}</span>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-
-interface InspectorProps {
-  language: Language;
-  draft: DraftTree;
-  selection: Selection;
-  selectedBlueprintIds: string[];
-  conflicts: Set<string>;
-  deleteError: string;
-  onRenameCategory: (id: string, name: string) => void;
-  onRenameSubcategory: (id: string, name: string) => void;
-  onRenameBlueprint: (id: string, stem: string) => void;
-  onAddSubcategory: (categoryId: string) => void;
-  onDeleteCategory: (id: string) => void;
-  onDeleteSubcategory: (subcategory: DraftSubcategory) => void;
-  onOpenIconPicker: (categoryId: string) => void;
-  onClearIcon: (categoryId: string) => void;
-  onSetBlueprintIcon: (blueprintId: string) => void;
-}
-
-function Inspector(props: InspectorProps): JSX.Element {
-  const t = (key: Parameters<typeof translate>[1]): string => translate(props.language, key);
-
-  if (props.selectedBlueprintIds.length === 1) {
-    const blueprint = props.draft.blueprints[props.selectedBlueprintIds[0]];
-    if (blueprint) return <BlueprintInspector language={props.language} draft={props.draft} blueprint={blueprint} conflict={props.conflicts.has(blueprint.id)} onRename={props.onRenameBlueprint} onSetIcon={props.onSetBlueprintIcon} />;
-  }
-  if (props.selectedBlueprintIds.length > 1) {
-    return <div className="inspector-block">{t('selectedCount').replace('{n}', String(props.selectedBlueprintIds.length))}</div>;
-  }
-
-  if (props.selection?.type === 'category') {
-    const category = props.draft.categories.find((item) => item.id === props.selection?.id);
-    if (category && isRecycleCategory(category)) {
-      return <div className="inspector-block muted">{t('recycleHint')}</div>;
-    }
-    if (category) {
-      const icon = category.iconId !== null ? getBlueprintIconById(category.iconId) : null;
-      const empty = countBlueprintsInCategory(category) === 0;
-      return (
-        <div className="inspector-block">
-          <label className="field">
-            <span>{t('categoryName')}</span>
-            <input value={category.name} onChange={(event) => props.onRenameCategory(category.id, event.target.value)} />
-          </label>
-          <div className="field">
-            <span>{t('icon')}</span>
-            <div className="icon-field">
-              <IconImage icon={icon} size={48} />
-              <div className="icon-field-actions">
-                <button className="secondary" onClick={() => props.onOpenIconPicker(category.id)}>
-                  <ImageIcon size={14} /> {t('setIcon')}
-                </button>
-                <button className="link" disabled={category.iconId === null} onClick={() => props.onClearIcon(category.id)}>
-                  {t('clearIcon')}
-                </button>
-              </div>
-              <small className="muted">{category.iconId === null ? t('noIcon') : `#${category.iconId}`}</small>
-            </div>
-          </div>
-          <div className="inspector-actions">
-            <button className="secondary" onClick={() => props.onAddSubcategory(category.id)}>
-              <FolderPlus size={14} /> {t('addSubcategory')}
-            </button>
-            <button className="danger ghost" disabled={!empty} onClick={() => props.onDeleteCategory(category.id)}>
-              <Trash2 size={14} /> {t('delete')}
-            </button>
-          </div>
-          {props.deleteError && <div className="inspector-error">{props.deleteError}</div>}
-        </div>
-      );
-    }
-  }
-
-  if (props.selection?.type === 'subcategory') {
-    const found = findSub(props.draft, props.selection.id);
-    if (found) {
-      const empty = found.subcategory.blueprintIds.length === 0;
-      const recycle = isRecycleCategory(found.category);
-      return (
-        <div className="inspector-block">
-          <div className="field">
-            <span>{t('categoriesPane')}</span>
-            <strong>{found.category.name}</strong>
-          </div>
-          {!recycle && (
-            <label className="field">
-              <span>{t('subcategoryName')}</span>
-              <input value={found.subcategory.name} onChange={(event) => props.onRenameSubcategory(found.subcategory.id, event.target.value)} />
-            </label>
-          )}
-          {!recycle && (
-            <div className="inspector-actions">
-              <button className="danger ghost" disabled={!empty} onClick={() => props.onDeleteSubcategory(found.subcategory)}>
-                <Trash2 size={14} /> {t('delete')}
-              </button>
-            </div>
-          )}
-          {props.deleteError && <div className="inspector-error">{props.deleteError}</div>}
-        </div>
-      );
-    }
-  }
-
-  return <div className="inspector-block muted">{t('selectNodeHint')}</div>;
-}
-
-function BlueprintInspector(props: { language: Language; draft: DraftTree; blueprint: DraftBlueprint; conflict: boolean; onRename: (id: string, stem: string) => void; onSetIcon: (blueprintId: string) => void }): JSX.Element {
-  const t = (key: Parameters<typeof translate>[1]): string => translate(props.language, key);
-  const location = locateBlueprint(props.draft, props.blueprint.id);
-  const originLabel = props.blueprint.origin === 'external' ? t('originExternal') : props.blueprint.origin === 'gameDir' ? t('originGameDir') : t('originSave');
-  const icon = props.blueprint.iconId !== null ? getBlueprintIconById(props.blueprint.iconId) : null;
-  return (
-    <div className="inspector-block">
-      <div className="field">
-        <span>{t('icon')}</span>
-        <div className="icon-field">
-          {icon ? <IconImage icon={icon} size={48} /> : <Layers size={32} className="bp-card-icon" />}
-          <div className="icon-field-actions">
-            {props.blueprint.hasCfg && (
-              <button className="secondary" onClick={() => props.onSetIcon(props.blueprint.id)}>
-                <ImageIcon size={14} /> {t('setIcon')}
-              </button>
-            )}
-            <small className="muted">
-              {props.blueprint.iconId === null ? t('noIcon') : `#${props.blueprint.iconId} ${icon ? getBlueprintIconDisplayName(icon, props.language) : ''}`}
-            </small>
-          </div>
-        </div>
-      </div>
-      <label className="field">
-        <span>{t('blueprintName')}</span>
-        <input className={props.conflict ? 'conflict' : ''} value={props.blueprint.stem} onChange={(event) => props.onRename(props.blueprint.id, event.target.value)} disabled={!props.blueprint.hasSbp && props.blueprint.origin === 'save'} />
-      </label>
-      {props.conflict && <div className="inspector-error">{t('nameConflict')}</div>}
-      <div className="field">
-        <span>{t('origin')}</span>
-        <strong>{originLabel}</strong>
-      </div>
-      {location && (
-        <div className="field">
-          <span>{t('categoriesPane')}</span>
-          <strong>
-            {location.category.name} / {location.subcategory.name}
-          </strong>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-
-interface VisibleGroup {
-  key: string;
-  title: string | null;
-  blueprints: DraftBlueprint[];
-}
-
-function computeVisibleBlueprints(draft: DraftTree, selection: Selection, search: string, recycledIds: Set<string>): { groups: VisibleGroup[] } {
-  const needle = search.trim().toLowerCase();
-  if (needle) {
-    const matches = Object.values(draft.blueprints).filter((blueprint) => !recycledIds.has(blueprint.id) && blueprint.stem.toLowerCase().includes(needle));
-    return { groups: [{ key: 'search', title: null, blueprints: matches }] };
-  }
-  if (selection?.type === 'subcategory') {
-    const found = findSub(draft, selection.id);
-    if (!found) return { groups: [] };
-    return { groups: [{ key: found.subcategory.id, title: null, blueprints: resolveBlueprints(draft, found.subcategory) }] };
-  }
-  if (selection?.type === 'category') {
-    const category = draft.categories.find((item) => item.id === selection.id);
-    if (!category) return { groups: [] };
-    return {
-      groups: category.subcategories.map((subcategory) => ({
-        key: subcategory.id,
-        title: subcategory.name,
-        blueprints: resolveBlueprints(draft, subcategory)
-      }))
-    };
-  }
-  return { groups: [] };
-}
-
-function resolveBlueprints(draft: DraftTree, subcategory: DraftSubcategory): DraftBlueprint[] {
-  return subcategory.blueprintIds.map((id) => draft.blueprints[id]).filter((blueprint): blueprint is DraftBlueprint => Boolean(blueprint));
-}
-
-function findSub(draft: DraftTree, subcategoryId: string): { category: DraftCategory; subcategory: DraftSubcategory } | undefined {
-  for (const category of draft.categories) {
-    const subcategory = category.subcategories.find((item) => item.id === subcategoryId);
-    if (subcategory) return { category, subcategory };
-  }
-  return undefined;
-}
-
-function resolvePasteTargetSubId(draft: DraftTree, selection: Selection): string | null {
-  if (selection?.type === 'subcategory') {
-    const found = findSub(draft, selection.id);
-    if (found && !isRecycleCategory(found.category)) return found.subcategory.id;
-    return null;
-  }
-  if (selection?.type === 'category') {
-    const category = draft.categories.find((item) => item.id === selection.id);
-    if (category && !isRecycleCategory(category)) return category.subcategories[0]?.id ?? null;
-  }
-  return null;
-}
-
-function makeCopyBlueprint(draft: DraftTree, source: DraftBlueprint, newStem: string): DraftBlueprint {
-  const sep = draft.gameBlueprintDir.includes('\\') ? '\\' : '/';
-  const sourceSbpPath = source.origin === 'external' ? source.sourceSbpPath : `${draft.gameBlueprintDir}${sep}${source.originalStem}.sbp`;
-  const sourceCfgPath = source.origin === 'external' ? source.sourceCfgPath : source.hasCfg ? `${draft.gameBlueprintDir}${sep}${source.originalStem}.sbpcfg` : null;
-  return {
-    id: makeId('bp'),
-    stem: newStem,
-    originalStem: newStem,
-    origin: 'external',
-    sourceSbpPath,
-    sourceCfgPath,
-    hasSbp: true,
-    hasCfg: source.hasCfg,
-    iconId: source.iconId,
-    originalIconId: source.iconId,
-    warnings: []
-  };
-}
-
-function uniqueName(base: string, existing: string[]): string {
-  if (!existing.includes(base)) return base;
-  let index = 2;
-  while (existing.includes(`${base} ${index}`)) index += 1;
-  return `${base} ${index}`;
-}
+// 子组件 CategoryRow / RecycleBinPanel / Inspector 已拆到 ./manager 下的独立文件；
+// 纯派生逻辑见 ./manager/managerSelectors。本文件只保留主视图与事件编排。

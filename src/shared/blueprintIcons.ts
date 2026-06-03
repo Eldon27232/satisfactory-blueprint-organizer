@@ -1,3 +1,5 @@
+// 蓝图图标库：加载约 600KB 的 generated.json。本模块仅供 renderer（IconPicker / 蓝图卡片 / 检查器）
+// 引用——core / main 切勿 import，以免把这份大 JSON 拉进主/核心进程的 bundle。
 import iconLibrary from './blueprintIconLibrary.generated.json';
 
 export type BlueprintIconType =

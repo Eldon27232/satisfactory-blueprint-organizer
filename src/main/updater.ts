@@ -1,5 +1,6 @@
 import { BrowserWindow, ipcMain } from 'electron';
 import electronUpdater from 'electron-updater';
+import { IPC } from '../shared/ipcChannels';
 
 const { autoUpdater } = electronUpdater;
 
@@ -18,24 +19,24 @@ export function registerUpdater(getWindow: () => BrowserWindow | null): void {
 
   autoUpdater.on('update-available', (info) => {
     const notes = typeof info.releaseNotes === 'string' ? info.releaseNotes : '';
-    send('updater:available', { version: info.version, notes });
+    send(IPC.updater.available, { version: info.version, notes });
   });
-  autoUpdater.on('update-not-available', () => send('updater:none'));
-  autoUpdater.on('download-progress', (progress) => send('updater:progress', Math.round(progress.percent)));
-  autoUpdater.on('update-downloaded', (info) => send('updater:downloaded', { version: info.version }));
-  autoUpdater.on('error', (error) => send('updater:error', String(error?.message ?? error)));
+  autoUpdater.on('update-not-available', () => send(IPC.updater.none));
+  autoUpdater.on('download-progress', (progress) => send(IPC.updater.progress, Math.round(progress.percent)));
+  autoUpdater.on('update-downloaded', (info) => send(IPC.updater.downloaded, { version: info.version }));
+  autoUpdater.on('error', (error) => send(IPC.updater.error, String(error?.message ?? error)));
 
-  ipcMain.handle('updater:check', async () => {
+  ipcMain.handle(IPC.updater.check, async () => {
     try {
       await autoUpdater.checkForUpdates();
     } catch (error) {
-      send('updater:error', String(error instanceof Error ? error.message : error));
+      send(IPC.updater.error, String(error instanceof Error ? error.message : error));
     }
   });
-  ipcMain.handle('updater:download', async () => {
+  ipcMain.handle(IPC.updater.download, async () => {
     await autoUpdater.downloadUpdate();
   });
-  ipcMain.handle('updater:quitAndInstall', () => {
+  ipcMain.handle(IPC.updater.quitAndInstall, () => {
     // isSilent=true：静默安装到现有位置（不弹安装向导）；isForceRunAfter=true：装完自动重启。
     autoUpdater.quitAndInstall(true, true);
   });

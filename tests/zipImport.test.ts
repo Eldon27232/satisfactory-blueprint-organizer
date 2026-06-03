@@ -1,26 +1,23 @@
-import { afterAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { zipSync, strToU8 } from 'fflate';
 
-// importStaging 依赖 electron（resolveDataRoot），测试里替换成临时目录，避免拉入 electron。
-vi.mock('../src/core/importStaging', () => ({
-  importStagingRoot: () => '',
-  cleanImportStaging: async () => {},
-  createStagingDir: async () => {
-    const dir = path.join(os.tmpdir(), 'sbc-zip-test', randomUUID());
-    await fs.mkdir(dir, { recursive: true });
-    return dir;
-  }
-}));
-
-import { decodeZipName, mapZipPathToCategory, importZipBlueprints } from '../src/core/zipImport';
+import { decodeZipName, importZipBlueprints } from '../src/core/zipImport';
+import { configureImportStaging } from '../src/core/importStaging';
 import { mergeImportedBlueprints, type DraftTree } from '../src/shared/draftModel';
 
+// 解耦后 importStaging 不再依赖 electron：直接注入临时目录作为数据根即可，无需 mock。
+const TEST_DATA_ROOT = path.join(os.tmpdir(), 'sbc-zip-test');
+
+beforeAll(() => {
+  configureImportStaging(TEST_DATA_ROOT);
+});
+
 afterAll(async () => {
-  await fs.rm(path.join(os.tmpdir(), 'sbc-zip-test'), { recursive: true, force: true });
+  await fs.rm(TEST_DATA_ROOT, { recursive: true, force: true });
 });
 
 describe('decodeZipName', () => {
@@ -39,21 +36,6 @@ describe('decodeZipName', () => {
   });
 });
 
-describe('mapZipPathToCategory', () => {
-  it('maps loose files to zipName / 未命名', () => {
-    expect(mapZipPathToCategory('Z', [])).toEqual({ category: 'Z', subcategory: '未命名' });
-  });
-  it('maps one folder level to zipName / folder', () => {
-    expect(mapZipPathToCategory('Z', ['A'])).toEqual({ category: 'Z', subcategory: 'A' });
-  });
-  it('maps two folder levels directly to folder1 / folder2', () => {
-    expect(mapZipPathToCategory('Z', ['A', 'B'])).toEqual({ category: 'A', subcategory: 'B' });
-  });
-  it('ignores levels deeper than two', () => {
-    expect(mapZipPathToCategory('Z', ['A', 'B', 'C', 'D'])).toEqual({ category: 'A', subcategory: 'B' });
-  });
-});
-
 describe('importZipBlueprints', () => {
   async function makeZip(name: string, files: Record<string, string>): Promise<string> {
     const data: Record<string, Uint8Array> = {};
@@ -65,7 +47,7 @@ describe('importZipBlueprints', () => {
     return zipPath;
   }
 
-  it('extracts pairs, maps structure by depth, and excludes the rest', async () => {
+  it('extracts pairs, carries zipName + dirSegments, and excludes the rest', async () => {
     const zipPath = await makeZip('myzip.zip', {
       'flat.sbp': 'a',
       'flat.sbpcfg': 'a',
@@ -83,10 +65,10 @@ describe('importZipBlueprints', () => {
     const byStem = Object.fromEntries(result.entries.map((entry) => [entry.stem, entry]));
 
     expect(result.entries).toHaveLength(4);
-    expect(byStem.flat).toMatchObject({ category: 'myzip', subcategory: '未命名' });
-    expect(byStem.one).toMatchObject({ category: 'myzip', subcategory: 'sub' });
-    expect(byStem.two).toMatchObject({ category: 'CatA', subcategory: 'SubB' });
-    expect(byStem.three).toMatchObject({ category: 'deep', subcategory: 'x' });
+    expect(byStem.flat).toMatchObject({ zipName: 'myzip', dirSegments: [] });
+    expect(byStem.one).toMatchObject({ zipName: 'myzip', dirSegments: ['sub'] });
+    expect(byStem.two).toMatchObject({ zipName: 'myzip', dirSegments: ['CatA', 'SubB'] });
+    expect(byStem.three).toMatchObject({ zipName: 'myzip', dirSegments: ['deep', 'x', 'y'] });
 
     // 暂存副本真实落盘。
     for (const entry of result.entries) {

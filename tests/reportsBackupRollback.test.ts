@@ -55,6 +55,13 @@ describe('reports, backup, rollback', () => {
     expect(await exists(path.join(blueprintDir, 'new.sbp'))).toBe(false);
     expect(report.rollbackBeforeBackupDir).toContain('rollback-before');
   });
+
+  it('rejects rollback from a path outside the backups root', async () => {
+    // 红线：回滚会写存档/蓝图夹，必须拒绝 backups 根之外的目录。
+    const outside = path.join(tempRoot, 'evil-backup');
+    await fs.mkdir(outside, { recursive: true });
+    await expect(rollbackFromBackup(outside)).rejects.toThrow(/拒绝回滚/);
+  });
 });
 
 async function exists(targetPath: string): Promise<boolean> {

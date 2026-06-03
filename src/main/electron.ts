@@ -1,7 +1,7 @@
 import { app, BrowserWindow, Menu } from 'electron';
 import path from 'node:path';
 import { registerIpc } from './ipc';
-import { cleanImportStaging } from '../core/importStaging';
+import { cleanImportStaging, configureImportStaging } from '../core/importStaging';
 import { resolveDataRoot } from './paths';
 import { registerUpdater } from './updater';
 
@@ -48,11 +48,14 @@ app.whenReady().then(() => {
   // Windows 据此关联任务栏图标/通知与应用身份；不设会让任务栏回退到默认图标。
   if (process.platform === 'win32') app.setAppUserModelId('dev.local.satisfactory-blueprint-organizer');
   // 把工作目录切到数据根，使 Backups/Reports/diagnostics 等相对路径统一落在这里。
+  const dataRoot = resolveDataRoot();
   try {
-    process.chdir(resolveDataRoot());
+    process.chdir(dataRoot);
   } catch {
     // ignore: 退回默认工作目录
   }
+  // 把数据根注入 core 的导入暂存模块（core 不反向依赖 main）。
+  configureImportStaging(dataRoot);
   // 清理上次会话遗留的导入暂存（草稿不跨会话持久化，遗留副本必为孤儿）。
   void cleanImportStaging();
   registerIpc();

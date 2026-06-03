@@ -56,6 +56,7 @@ describe('mergeMappingDiff', () => {
     expect(merged.blueprints['a'].writeBackToMapping).toBe(true);
     expect(Object.values(merged.blueprints).map((b) => b.stem)).toContain('gamma');
     expect(merged.categories.some((c) => c.name === 'NewCat')).toBe(true);
-    expect(merged.categories.some((c) => c.id === 'recycle-bin')).toBe(true);
+    // 删除项进独立的 recycleBin 子森林（不再是 categories 里的 recycle-bin 分类）。
+    expect((merged.recycleBin ?? []).some((c) => c.subcategories.some((s) => s.blueprintIds.includes('b')))).toBe(true);
   });
 });

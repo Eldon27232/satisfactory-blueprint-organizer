@@ -1,152 +1,20 @@
-import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { BLUEPRINT_CONFIG_EXT, BLUEPRINT_EXT } from '../shared/constants';
 import {
   computeCategoryPlan,
-  getRecycledBlueprintIdSet,
   isRecycleCategory,
-  locateBlueprint,
-  UNNAMED,
   validateDraft,
   type DraftApplyOptions,
   type DraftApplyPlan,
-  type DraftBlueprint,
   type DraftTree
 } from '../shared/draftModel';
 import type { ImportReport, Notice } from '../shared/types';
 import { applyCategoryPlanToSave, verifyCategoryPlan } from './applyBlueprintCategories';
 import { createBackup } from './backup';
 import { discoverBlueprintCategoryCapability } from './blueprintCategoryDiscovery';
-import { writeBlueprintIconId } from './blueprintConfig';
-import { ensureDir, pathExists } from './fsUtils';
 import { parseSaveFile, writeSaveFile } from './parseSave';
 import { writeImportReport } from './reports';
-
-interface ResolvedCopy {
-  blueprint: DraftBlueprint;
-  fromSbp: string;
-  toSbp: string;
-  fromCfg: string | null;
-  toCfg: string | null;
-}
-
-interface ResolvedRename {
-  blueprint: DraftBlueprint;
-  fromSbp: string;
-  toSbp: string;
-  fromCfg: string | null;
-  toCfg: string | null;
-}
-
-interface ResolvedDeletion {
-  sbp: string;
-  cfg: string | null;
-}
-
-interface ResolvedFileOps {
-  copies: ResolvedCopy[];
-  renames: ResolvedRename[];
-  deletions: ResolvedDeletion[];
-  /** Blueprint names to strip from the save's categories (recycled blueprints). */
-  removedStems: string[];
-  saveOnly: string[];
-  /** .sbpcfg files whose iconID must be rewritten (icon changed in the manager). */
-  iconWrites: Array<{ cfgPath: string; iconId: number }>;
-  /** Files copied back into the external mapping folder for kept manager-only blueprints. */
-  mappingWriteBacks: Array<{ fromSbp: string; toSbp: string; fromCfg: string | null; toCfg: string | null }>;
-  notices: Notice[];
-}
-
-const RENAME_STAGING_DIR = '.sbc-rename-staging';
-
-function gamePath(gameBlueprintDir: string, stem: string, ext: string): string {
-  return path.join(gameBlueprintDir, `${stem}${ext}`);
-}
-
-function sanitizeSegment(name: string): string {
-  return name.trim().replace(/[<>:"/\\|?*\x00-\x1f]/g, '_') || UNNAMED;
-}
-
-/** Resolve the concrete copy/rename operations and any on-disk conflicts. */
-async function resolveFileOps(draft: DraftTree): Promise<ResolvedFileOps> {
-  const copies: ResolvedCopy[] = [];
-  const renames: ResolvedRename[] = [];
-  const deletions: ResolvedDeletion[] = [];
-  const removedStems: string[] = [];
-  const saveOnly: string[] = [];
-  const iconWrites: Array<{ cfgPath: string; iconId: number }> = [];
-  const mappingWriteBacks: ResolvedFileOps['mappingWriteBacks'] = [];
-  const notices: Notice[] = [];
-  const gameDir = draft.gameBlueprintDir;
-  const recycledIds = getRecycledBlueprintIdSet(draft);
-
-  for (const blueprint of Object.values(draft.blueprints)) {
-    // Recycled blueprints leave the game entirely: strip from the save, delete the file.
-    if (recycledIds.has(blueprint.id)) {
-      removedStems.push(blueprint.originalStem, blueprint.stem);
-      if (blueprint.hasSbp && blueprint.origin === 'gameDir') {
-        deletions.push({
-          sbp: gamePath(gameDir, blueprint.originalStem, BLUEPRINT_EXT),
-          cfg: blueprint.hasCfg ? gamePath(gameDir, blueprint.originalStem, BLUEPRINT_CONFIG_EXT) : null
-        });
-      }
-      continue;
-    }
-    if (!blueprint.hasSbp) {
-      saveOnly.push(blueprint.stem);
-      continue;
-    }
-    const toSbp = gamePath(gameDir, blueprint.stem, BLUEPRINT_EXT);
-    const toCfg = blueprint.hasCfg ? gamePath(gameDir, blueprint.stem, BLUEPRINT_CONFIG_EXT) : null;
-
-    if (blueprint.origin === 'external') {
-      const fromSbp = blueprint.sourceSbpPath;
-      if (!fromSbp) continue;
-      // Never overwrite an existing different blueprint in the flat game dir.
-      if (await pathExists(toSbp)) {
-        notices.push({ severity: 'error', code: 'TARGET_EXISTS', message: `游戏蓝图目录已存在同名蓝图 "${blueprint.stem}.sbp"，禁止覆盖。`, path: toSbp });
-        continue;
-      }
-      copies.push({ blueprint, fromSbp, toSbp, fromCfg: blueprint.sourceCfgPath, toCfg });
-    } else if (blueprint.origin === 'gameDir') {
-      if (blueprint.stem === blueprint.originalStem) continue; // unchanged, no file op
-      const fromSbp = gamePath(gameDir, blueprint.originalStem, BLUEPRINT_EXT);
-      const fromCfg = blueprint.hasCfg ? gamePath(gameDir, blueprint.originalStem, BLUEPRINT_CONFIG_EXT) : null;
-      if (!(await pathExists(fromSbp))) {
-        notices.push({ severity: 'warning', code: 'RENAME_SOURCE_MISSING', message: `改名来源文件不存在，已跳过：${blueprint.originalStem}.sbp`, path: fromSbp });
-        continue;
-      }
-      renames.push({ blueprint, fromSbp, toSbp, fromCfg, toCfg });
-    }
-  }
-
-  // Icon edits: any kept blueprint whose icon changed and has a .sbpcfg ending up in the game dir.
-  for (const blueprint of Object.values(draft.blueprints)) {
-    if (recycledIds.has(blueprint.id)) continue;
-    if (!blueprint.hasSbp || !blueprint.hasCfg) continue;
-    if (blueprint.iconId === null || blueprint.iconId === blueprint.originalIconId) continue;
-    iconWrites.push({ cfgPath: gamePath(gameDir, blueprint.stem, BLUEPRINT_CONFIG_EXT), iconId: blueprint.iconId });
-  }
-
-  // Write-backs: manager-only blueprints the user chose to keep are copied into the external mapping
-  // folder under their current category/subcategory (source = their final file in the game dir).
-  if (draft.mappingDir) {
-    for (const blueprint of Object.values(draft.blueprints)) {
-      if (recycledIds.has(blueprint.id) || !blueprint.writeBackToMapping || !blueprint.hasSbp) continue;
-      const located = locateBlueprint(draft, blueprint.id);
-      if (!located) continue;
-      const dir = path.join(draft.mappingDir, sanitizeSegment(located.category.name), sanitizeSegment(located.subcategory.name));
-      mappingWriteBacks.push({
-        fromSbp: gamePath(gameDir, blueprint.stem, BLUEPRINT_EXT),
-        toSbp: path.join(dir, `${blueprint.stem}${BLUEPRINT_EXT}`),
-        fromCfg: blueprint.hasCfg ? gamePath(gameDir, blueprint.stem, BLUEPRINT_CONFIG_EXT) : null,
-        toCfg: blueprint.hasCfg ? path.join(dir, `${blueprint.stem}${BLUEPRINT_CONFIG_EXT}`) : null
-      });
-    }
-  }
-
-  return { copies, renames, deletions, removedStems, saveOnly, iconWrites, mappingWriteBacks, notices };
-}
+import { resolveFileOps } from './draftApply/fileOps';
+import { buildFileOperations, executeApplyOperations, type ApplyOperation, type FileOpRecords } from './draftApply/pipeline';
 
 /** Build the confirm-page preview for a draft. */
 export async function planDraftApply(draft: DraftTree): Promise<DraftApplyPlan> {
@@ -188,7 +56,11 @@ export async function planDraftApply(draft: DraftTree): Promise<DraftApplyPlan> 
   };
 }
 
-/** Execute the draft: backup, copy/rename files, write the save, reread + verify, write report. */
+/**
+ * Execute the draft: validate, back up, then run every write as an ordered operation pipeline
+ * (file ops + save write). Any step failure aborts with a structured DraftApplyError (completed
+ * steps + backup dir). The success path produces the same on-disk result as before.
+ */
 export async function executeDraftImport(options: DraftApplyOptions): Promise<ImportReport> {
   const { draft } = options;
   const plan = await planDraftApply(draft);
@@ -204,92 +76,40 @@ export async function executeDraftImport(options: DraftApplyOptions): Promise<Im
   if (blockingErrors.length > 0) {
     throw new Error(blockingErrors.map((error) => `[${error.code}] ${error.message}`).join('\n'));
   }
+  const savePath = draft.savePath;
 
   const ops = await resolveFileOps(draft);
   const backupDir = await createBackup({
-    savePath: draft.savePath,
+    savePath,
     blueprintDir: draft.gameBlueprintDir,
     mappingReport: { draftApply: true, plan }
   });
 
-  const copiedFiles: string[] = [];
-  const renamedFiles: Array<{ from: string; to: string }> = [];
-  const deletedFiles: string[] = [];
-  const skippedFiles: string[] = [];
+  // All writes are modeled as an ordered operation pipeline: file ops first, then the save write.
+  const records: FileOpRecords = { copiedFiles: [], renamedFiles: [], deletedFiles: [] };
+  // 用容器对象承接 save 步骤的结果：避免 TS 因「闭包内赋值」无法收窄 outer 变量（会误判为 never）。
+  const saveOutcome: { value: { created: ReturnType<typeof applyCategoryPlanToSave>; verification: ReturnType<typeof verifyCategoryPlan> } | null } = { value: null };
 
-  // Deletions (recycle bin): remove files from the flat game dir.
-  for (const deletion of ops.deletions) {
-    if (await pathExists(deletion.sbp)) {
-      await fs.rm(deletion.sbp, { force: true });
-      deletedFiles.push(deletion.sbp);
+  // Write the save (categories, subcategories, BlueprintNames, IconID, MenuPriority), then reread + verify.
+  const saveOp: ApplyOperation = {
+    kind: 'save-write',
+    label: `写入存档分类：${path.basename(savePath)}`,
+    run: async () => {
+      const save = await parseSaveFile(savePath);
+      const created = applyCategoryPlanToSave(save, plan.categoryPlan, ops.removedStems);
+      await writeSaveFile(savePath, save);
+      const reread = await parseSaveFile(savePath);
+      const verification = verifyCategoryPlan(reread, plan.categoryPlan);
+      saveOutcome.value = { created, verification };
     }
-    if (deletion.cfg && (await pathExists(deletion.cfg))) {
-      await fs.rm(deletion.cfg, { force: true });
-      deletedFiles.push(deletion.cfg);
-    }
-  }
+  };
 
-  // Copies (external imports).
-  for (const copy of ops.copies) {
-    await ensureDir(path.dirname(copy.toSbp));
-    await fs.copyFile(copy.fromSbp, copy.toSbp);
-    copiedFiles.push(copy.toSbp);
-    if (copy.fromCfg && copy.toCfg) {
-      await fs.copyFile(copy.fromCfg, copy.toCfg);
-      copiedFiles.push(copy.toCfg);
-    }
-  }
+  const operations = [...buildFileOperations(ops, draft.gameBlueprintDir, records), saveOp];
+  await executeApplyOperations(operations, backupDir);
+  const saveResult = saveOutcome.value;
+  if (!saveResult) throw new Error('保存步骤未执行。'); // 不可达：pipeline 成功即已运行 saveOp
 
-  // Renames via two-phase staging (handles swaps/cycles in the flat dir).
-  if (ops.renames.length > 0) {
-    const staging = path.join(draft.gameBlueprintDir, RENAME_STAGING_DIR);
-    await ensureDir(staging);
-    try {
-      for (const rename of ops.renames) {
-        await fs.rename(rename.fromSbp, path.join(staging, path.basename(rename.toSbp)));
-        if (rename.fromCfg && rename.toCfg && (await pathExists(rename.fromCfg))) {
-          await fs.rename(rename.fromCfg, path.join(staging, path.basename(rename.toCfg)));
-        }
-      }
-      for (const rename of ops.renames) {
-        await fs.rename(path.join(staging, path.basename(rename.toSbp)), rename.toSbp);
-        renamedFiles.push({ from: rename.fromSbp, to: rename.toSbp });
-        if (rename.toCfg) {
-          const stagedCfg = path.join(staging, path.basename(rename.toCfg));
-          if (await pathExists(stagedCfg)) await fs.rename(stagedCfg, rename.toCfg);
-        }
-      }
-    } finally {
-      await fs.rm(staging, { recursive: true, force: true });
-    }
-  }
-
-  // Blueprint icon edits: rewrite each changed .sbpcfg's iconID (files are now at their final paths).
-  for (const write of ops.iconWrites) {
-    if (await pathExists(write.cfgPath)) {
-      await writeBlueprintIconId(write.cfgPath, write.iconId);
-    }
-  }
-
-  // Write-backs into the external mapping folder (kept manager-only blueprints).
-  for (const wb of ops.mappingWriteBacks) {
-    if (await pathExists(wb.fromSbp)) {
-      await ensureDir(path.dirname(wb.toSbp));
-      await fs.copyFile(wb.fromSbp, wb.toSbp);
-      copiedFiles.push(wb.toSbp);
-      if (wb.fromCfg && wb.toCfg && (await pathExists(wb.fromCfg))) {
-        await fs.copyFile(wb.fromCfg, wb.toCfg);
-        copiedFiles.push(wb.toCfg);
-      }
-    }
-  }
-
-  // Write the save (categories, subcategories, BlueprintNames, IconID, MenuPriority).
-  const save = await parseSaveFile(draft.savePath);
-  const { categoriesCreated, subcategoriesCreated } = applyCategoryPlanToSave(save, plan.categoryPlan, ops.removedStems);
-  await writeSaveFile(draft.savePath, save);
-  const reread = await parseSaveFile(draft.savePath);
-  const verification = verifyCategoryPlan(reread, plan.categoryPlan);
+  const { created, verification } = saveResult;
   if (verification.iconMismatches && verification.iconMismatches.length > 0) {
     warnings.push({ severity: 'warning', code: 'ICON_NOT_WRITTEN', message: verification.message });
   }
@@ -303,16 +123,16 @@ export async function executeDraftImport(options: DraftApplyOptions): Promise<Im
   return writeImportReport({
     selectedGameBlueprintDir: draft.gameBlueprintDir,
     selectedMappingDir: '',
-    selectedSavePath: draft.savePath,
+    selectedSavePath: savePath,
     backupDir,
-    copiedFiles,
+    copiedFiles: records.copiedFiles,
     overwrittenFiles: [],
-    skippedFiles,
-    renamedFiles,
-    deletedFiles,
+    skippedFiles: [],
+    renamedFiles: records.renamedFiles,
+    deletedFiles: records.deletedFiles,
     iconUpdates: plan.iconUpdates,
-    categoriesCreated,
-    subcategoriesCreated,
+    categoriesCreated: created.categoriesCreated,
+    subcategoriesCreated: created.subcategoriesCreated,
     blueprintAssignments,
     warnings,
     errors: [],

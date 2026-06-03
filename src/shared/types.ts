@@ -202,11 +202,12 @@ export interface DroppedBlueprintImport {
   errors: Notice[];
 }
 
-// 从压缩包解压并暂存后的一个蓝图：sbpPath/cfgPath 指向暂存副本，category/subcategory 由
-// 压缩包内文件夹深度决定（见 zipImport.mapZipPathToCategory）。
+// 从压缩包解压并暂存后的一个蓝图：sbpPath/cfgPath 指向暂存副本。不预先定分类，而是携带
+// zipName + dirSegments（zip 内从根到该文件父目录的目录段，已 GBK 解码），由渲染层的分层
+// 导入向导按用户所选「目录层/子目录层」映射（见 shared/zipLayout）。
 export interface ZipBlueprintEntry {
-  category: string;
-  subcategory: string;
+  zipName: string;
+  dirSegments: string[];
   stem: string;
   sbpPath: string;
   cfgPath: string;

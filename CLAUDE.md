@@ -18,7 +18,7 @@
 - **产物命名用连字符**：`artifactName` 形如 `Satisfactory-Blueprint-Organizer-Setup-${version}.${ext}`。带空格会被 GitHub 转成点号，导致 `latest.yml` 里的 url 对不上、自动更新找不到资源。
 - **更新公告必须走 `latest.yml` 的 `releaseNotes`**：`build.releaseInfo.releaseNotesFile = RELEASE_NOTES.md`。否则 electron-updater 会回退去拉 GitHub atom 的 **HTML**，客户端按 Markdown 解析失败 → 公告显示成源码且中英文两段都显示。客户端 `src/shared/releaseNotes.ts` 也做了 HTML→Markdown 容错兜底。
 - **图标库**：`public/blueprint-icons/` 是 WebP（PNG 降分辨率压缩，省 ~93%）；`generated.json` 的 imagePath 用 `.webp`。重新生成图标后跑 `npm run compress-icons`。
-- **数据目录**：主进程启动 `process.chdir(resolveDataRoot())`（打包=exe 同级，只读则回退 userData；dev=项目根）。
+- **数据目录**：主进程启动 `process.chdir(resolveDataRoot())`（打包=exe 同级，只读则回退 userData；dev=项目内 `.data-dev/`）。
 - **Linux 存档定位**：Satisfactory 无原生 Linux 版，走 Steam Proton，存档在 `<Steam库>/steamapps/compatdata/526870/pfx/drive_c/users/steamuser/AppData/Local/FactoryGame/Saved/SaveGames`；探测 `~/.steam`、`~/.local/share/Steam`、Flatpak 等根 + 解析 `libraryfolders.vdf`。见 `src/core/locateSaves.ts`（按 `process.platform` 分发，Windows 逻辑不要动）。
 
 ## 发布流程（Windows 本机打包 + Linux 用 VPS 构建；不用 GitHub Actions）

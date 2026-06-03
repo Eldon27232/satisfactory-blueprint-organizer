@@ -1389,3 +1389,262 @@ button.danger.ghost {
   border-color: #d98676;
   background: #fff1ee;
 }
+
+/* ----- Zip import wizard ----- */
+.zip-wizard {
+  width: min(820px, 96vw);
+}
+
+.zip-wizard-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  min-width: 0;
+}
+
+.zip-wizard-meta strong {
+  max-width: 360px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.zip-wizard-body {
+  padding: 14px 18px;
+  overflow: auto;
+  display: grid;
+  gap: 18px;
+  min-height: 0;
+}
+
+.zip-wizard-section h4 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.level-chips,
+.sub-level-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.level-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border: 1px solid #dde3e0;
+  border-radius: 8px;
+  background: #fbfcfb;
+  color: #2a3438;
+  font-weight: 500;
+  cursor: pointer;
+  min-height: 0;
+}
+
+.level-chip.selected {
+  border-color: #287277;
+  background: #eef7f6;
+  box-shadow: inset 0 0 0 2px #287277;
+}
+
+.level-chip.dirty {
+  border-color: #e0b85e;
+  background: #fffaf0;
+}
+
+.level-chip-count {
+  font-size: 12px;
+  color: #6a767c;
+}
+
+.level-chip-warn {
+  color: #c2841a;
+}
+
+.zip-wizard-ack {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #fff8df;
+  border: 1px solid #e8d489;
+  font-size: 13px;
+}
+
+.zip-wizard-ack input {
+  margin-top: 2px;
+}
+
+.zip-wizard-ack span {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.zip-wizard-ack em {
+  font-style: normal;
+  font-weight: 600;
+}
+
+.sub-level-list {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.sub-level-option {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.sub-level-option .level-chip {
+  justify-self: start;
+}
+
+.sub-level-expand {
+  justify-self: end;
+  padding: 4px;
+  min-height: 0;
+  background: transparent;
+  border: none;
+  color: #45525a;
+  cursor: pointer;
+}
+
+.sub-level-breakdown {
+  grid-column: 1 / -1;
+  margin: 0 0 4px;
+  padding: 6px 10px;
+  list-style: none;
+  border-left: 2px solid #dde3e0;
+  display: grid;
+  gap: 3px;
+  font-size: 13px;
+}
+
+.sub-level-breakdown li,
+.zip-wizard-cat ul li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.zip-wizard-summary {
+  font-size: 13px;
+  color: #45525a;
+  margin-bottom: 8px;
+}
+
+.zip-wizard-tree {
+  border: 1px solid #e6eae8;
+  border-radius: 8px;
+  padding: 10px 12px;
+  max-height: 220px;
+  overflow: auto;
+  display: grid;
+  gap: 10px;
+}
+
+.zip-wizard-cat-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-weight: 600;
+}
+
+.zip-wizard-cat ul {
+  margin: 4px 0 0;
+  padding-left: 14px;
+  list-style: none;
+  display: grid;
+  gap: 3px;
+  font-size: 13px;
+  color: #45525a;
+}
+
+/* ----- Recycle bin browser ----- */
+.recycle-browser {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.recycle-browser-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid #edf0ee;
+}
+
+.recycle-crumbs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+  color: #2a3438;
+}
+
+.recycle-crumb-sep {
+  color: #6a767c;
+  font-weight: 500;
+}
+
+.recycle-browser-list {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 8px 10px;
+  display: grid;
+  gap: 4px;
+  align-content: start;
+}
+
+.recycle-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border: 1px solid #e6eae8;
+  border-radius: 8px;
+  background: #fbfcfb;
+}
+
+.recycle-row.selected {
+  border-color: #287277;
+  background: #eef7f6;
+}
+
+.recycle-row.enterable .recycle-row-name {
+  cursor: pointer;
+}
+
+.recycle-row-icon {
+  display: inline-flex;
+  width: 22px;
+  justify-content: center;
+}
+
+.recycle-row-folder {
+  color: #c2841a;
+}
+
+.recycle-row-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

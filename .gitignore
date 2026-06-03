@@ -7,7 +7,8 @@ out/
 release/
 .vite/
 
-# Runtime artifacts
+# Runtime artifacts (dev：集中在 .data-dev/；打包后落在 exe 同级 / userData)
+.data-dev/
 Reports/
 Backups/
 

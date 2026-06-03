@@ -8,6 +8,7 @@ import { Titlebar } from './Titlebar';
 import { computeMappingDiff, mergeMappingDiff, type MappingDiff } from '../shared/mappingDiff';
 import { pickReleaseNotes } from '../shared/releaseNotes';
 import { MappingDiffDialog } from './MappingDiffDialog';
+import { useUpdater } from './useUpdater';
 
 type View = 'setup' | 'manager';
 
@@ -35,24 +36,16 @@ export function App(): JSX.Element {
   const [importReport, setImportReport] = useState<ImportReport | null>(null);
   const [backups, setBackups] = useState<BackupRecord[]>([]);
   const [backupToDelete, setBackupToDelete] = useState<BackupRecord | null>(null);
-  const [updateInfo, setUpdateInfo] = useState<{ version: string; notes: string } | null>(null);
-  const [updatePhase, setUpdatePhase] = useState<'available' | 'downloading' | 'downloaded'>('available');
-  const [updatePercent, setUpdatePercent] = useState(0);
   const [mappingDiffState, setMappingDiffState] = useState<{ mappingDir: string; diff: MappingDiff } | null>(null);
   const [setupWarning, setSetupWarning] = useState(false);
+
+  const { updateInfo, updatePhase, updatePercent, dismiss: dismissUpdate, startDownload: startUpdateDownload, quitAndInstall: quitAndInstallUpdate } = useUpdater();
 
   const t = (key: Parameters<typeof translate>[1]): string => translate(language, key);
 
   useEffect(() => {
     void autoLocate();
     void refreshBackups();
-    const updater = window.sbc?.updater;
-    if (updater) {
-      updater.onAvailable((info) => { setUpdateInfo(info); setUpdatePhase('available'); });
-      updater.onProgress((percent) => setUpdatePercent(percent));
-      updater.onDownloaded((info) => { setUpdateInfo((previous) => previous ?? { version: info.version, notes: '' }); setUpdatePhase('downloaded'); });
-      void updater.check();
-    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -558,7 +551,7 @@ export function App(): JSX.Element {
       )}
 
       {updateInfo && (
-        <div className="modal-backdrop" onClick={updatePhase === 'downloading' ? undefined : () => setUpdateInfo(null)}>
+        <div className="modal-backdrop" onClick={updatePhase === 'downloading' ? undefined : dismissUpdate}>
           <div className="modal small-confirm" onClick={(event) => event.stopPropagation()}>
             <header className="modal-head">
               <h2>{t('updateAvailableTitle')}</h2>
@@ -584,12 +577,12 @@ export function App(): JSX.Element {
             <footer className="confirm-actions" style={{ padding: '14px 18px' }}>
               {updatePhase === 'available' && (
                 <>
-                  <button className="secondary" onClick={() => setUpdateInfo(null)}>{t('updateLater')}</button>
-                  <button className="primary" onClick={() => { setUpdatePhase('downloading'); setUpdatePercent(0); void window.sbc?.updater.download(); }}>{t('updateNow')}</button>
+                  <button className="secondary" onClick={dismissUpdate}>{t('updateLater')}</button>
+                  <button className="primary" onClick={startUpdateDownload}>{t('updateNow')}</button>
                 </>
               )}
               {updatePhase === 'downloading' && <button className="secondary" disabled>{t('updateDownloading')}</button>}
-              {updatePhase === 'downloaded' && <button className="primary" onClick={() => void window.sbc?.updater.quitAndInstall()}>{t('updateRestart')}</button>}
+              {updatePhase === 'downloaded' && <button className="primary" onClick={quitAndInstallUpdate}>{t('updateRestart')}</button>}
             </footer>
           </div>
         </div>

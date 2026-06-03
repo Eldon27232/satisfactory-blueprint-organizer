@@ -2,7 +2,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { BACKUPS_DIR } from '../shared/constants';
 import type { BackupRecord } from '../shared/types';
-import { copyDirectorySnapshot, ensureDir, pathExists, timestampForPath, writeJson } from './fsUtils';
+import { assertWithinRoot, copyDirectorySnapshot, ensureDir, pathExists, timestampForPath, writeJson } from './fsUtils';
 
 export interface CreateBackupOptions {
   savePath: string;
@@ -63,11 +63,6 @@ export async function listBackups(rootDir = BACKUPS_DIR): Promise<BackupRecord[]
 
 /** Permanently delete one backup directory. Refuses any path outside the backups root. */
 export async function deleteBackup(backupDir: string, rootDir = BACKUPS_DIR): Promise<void> {
-  const root = path.resolve(rootDir);
-  const target = path.resolve(backupDir);
-  const rel = path.relative(root, target);
-  if (rel === '' || rel.startsWith('..') || path.isAbsolute(rel)) {
-    throw new Error(`拒绝删除：不是备份目录内的路径：${backupDir}`);
-  }
+  const target = assertWithinRoot(rootDir, backupDir, `拒绝删除：不是备份目录内的路径：${backupDir}`);
   await fs.rm(target, { recursive: true, force: true });
 }
